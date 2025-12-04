@@ -1,0 +1,94 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}{{ t.assets_title }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 animate-fade-in">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">{{ t.assets_title }}</h1>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">{{ t.assets_sites }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ sites|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">{{ t.dashboard_total_assets }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ assets|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">Critical Assets</p>
+            <p class="text-2xl font-bold text-red-600">{{ assets|selectattr('asset.criticality', 'equalto', 'critical')|list|length }}</p>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-xl card-shadow overflow-hidden">
+        <div class="p-4 border-b">
+            <h3 class="text-lg font-semibold text-gray-900">{{ t.assets_list }}</h3>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Code</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.assets_criticality }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.assets_health_score }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.assets_failure_prob }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.common_status }}</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for item in assets %}
+                    <tr class="hover:bg-gray-50 cursor-pointer">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{{ item.asset.code }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {% if rtl and item.asset.name_ar %}{{ item.asset.name_ar }}{% else %}{{ item.asset.name }}{% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ item.asset.asset_type or '-' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                {% if item.asset.criticality == 'critical' %}bg-red-100 text-red-800
+                                {% elif item.asset.criticality == 'high' %}bg-orange-100 text-orange-800
+                                {% elif item.asset.criticality == 'medium' %}bg-yellow-100 text-yellow-800
+                                {% else %}bg-green-100 text-green-800{% endif %}">
+                                {{ item.asset.criticality }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if item.ai_score %}
+                            <div class="flex items-center">
+                                <div class="w-16 bg-gray-200 rounded-full h-2 me-2">
+                                    <div class="h-2 rounded-full {% if item.ai_score.health_score > 70 %}bg-green-500{% elif item.ai_score.health_score > 50 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ item.ai_score.health_score }}%"></div>
+                                </div>
+                                <span class="text-sm">{{ '%.0f'|format(item.ai_score.health_score) }}%</span>
+                            </div>
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            {% if item.ai_score %}
+                            <span class="{% if item.ai_score.failure_probability > 0.5 %}text-red-600{% elif item.ai_score.failure_probability > 0.3 %}text-orange-600{% else %}text-green-600{% endif %}">
+                                {{ '%.1f'|format(item.ai_score.failure_probability * 100) }}%
+                            </span>
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                {{ item.asset.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

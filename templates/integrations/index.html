@@ -1,0 +1,145 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}{{ t.integrations_title }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 animate-fade-in" x-data="integrationsPage()">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">{{ t.integrations_title }}</h1>
+        <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            {{ t.integrations_add }}
+        </button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for integration in integrations %}
+        <div class="bg-white rounded-xl p-6 card-shadow">
+            <div class="flex items-start justify-between mb-4">
+                <div>
+                    <h3 class="font-semibold text-gray-900">{{ integration.name }}</h3>
+                    <p class="text-sm text-gray-500">{{ integration.integration_type|upper }}</p>
+                </div>
+                <span class="px-2 py-1 text-xs font-medium rounded-full 
+                    {% if integration.status == 'active' %}bg-green-100 text-green-800
+                    {% elif integration.status == 'error' %}bg-red-100 text-red-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ integration.status }}
+                </span>
+            </div>
+            
+            <div class="space-y-2 text-sm text-gray-600">
+                <p>Last sync: {{ integration.last_sync_at.strftime('%Y-%m-%d %H:%M') if integration.last_sync_at else 'Never' }}</p>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t flex space-x-2 {% if rtl %}space-x-reverse{% endif %}">
+                <button @click="testConnection({{ integration.id }})" class="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm">
+                    {{ t.integrations_test }}
+                </button>
+                <button class="px-3 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+        
+        {% if not integrations %}
+        <div class="col-span-full bg-white rounded-xl p-12 card-shadow text-center">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
+            </svg>
+            <p class="text-gray-500 mb-4">No integrations configured yet.</p>
+            <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                {{ t.integrations_add }}
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div x-show="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center" style="display: none;">
+        <div class="absolute inset-0 bg-black opacity-50" @click="showAddModal = false"></div>
+        <div class="relative bg-white rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ t.integrations_add }}</h3>
+            
+            <form @submit.prevent="createIntegration">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                        <input type="text" x-model="newIntegration.name" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                        <select x-model="newIntegration.integration_type" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">Select type...</option>
+                            <option value="demo">Demo (Simulated Data)</option>
+                            <option value="opcua">OPC-UA</option>
+                            <option value="pi">PI Historian</option>
+                            <option value="sap">SAP PM</option>
+                            <option value="sql">SQL Database</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex space-x-3 {% if rtl %}space-x-reverse{% endif %}">
+                    <button type="button" @click="showAddModal = false" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                        {{ t.common_cancel }}
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        {{ t.common_save }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="testResult" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-sm" style="display: none;">
+        <div :class="testResult?.success ? 'text-green-600' : 'text-red-600'" class="font-medium" x-text="testResult?.message"></div>
+    </div>
+</div>
+
+<script>
+function integrationsPage() {
+    return {
+        showAddModal: false,
+        newIntegration: { name: '', integration_type: '' },
+        testResult: null,
+        
+        async createIntegration() {
+            try {
+                const response = await fetch('/api/integrations/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.newIntegration.name,
+                        integration_type: this.newIntegration.integration_type,
+                        config: {}
+                    })
+                });
+                
+                if (response.ok) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        },
+        
+        async testConnection(integrationId) {
+            try {
+                const response = await fetch(`/api/integrations/${integrationId}/test`, { method: 'POST' });
+                this.testResult = await response.json();
+                setTimeout(() => this.testResult = null, 3000);
+            } catch (e) {
+                this.testResult = { success: false, message: 'Connection failed' };
+                setTimeout(() => this.testResult = null, 3000);
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

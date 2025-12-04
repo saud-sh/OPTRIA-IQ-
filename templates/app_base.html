@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="flex h-screen bg-gray-100" x-data="{ sidebarOpen: true, mobileMenu: false }">
+    <aside :class="sidebarOpen ? 'w-64' : 'w-20'" class="gradient-bg text-white transition-all duration-300 hidden md:flex flex-col">
+        <div class="p-4 border-b border-blue-800">
+            <h1 class="text-xl font-bold" x-show="sidebarOpen">{{ t.app_name }}</h1>
+            <span x-show="!sidebarOpen" class="text-2xl font-bold">O</span>
+        </div>
+        
+        <nav class="flex-1 py-4 overflow-y-auto">
+            <a href="/dashboard?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if request.url.path == '/dashboard' %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.nav_dashboard }}</span>
+            </a>
+            
+            <a href="/optimization?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/optimization' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.nav_optimization }}</span>
+            </a>
+            
+            <a href="/assets?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/assets' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.nav_assets }}</span>
+            </a>
+            
+            <a href="/integrations?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/integrations' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.nav_integrations }}</span>
+            </a>
+            
+            <a href="/work-orders?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/work-orders' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.nav_work_orders }}</span>
+            </a>
+            
+            {% if user.role == 'platform_owner' %}
+            <div class="border-t border-blue-800 mt-4 pt-4">
+                <a href="/admin/tenants?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/admin' in request.url.path %}active{% endif %}">
+                    <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                    </svg>
+                    <span x-show="sidebarOpen">Tenants</span>
+                </a>
+            </div>
+            {% endif %}
+        </nav>
+        
+        <div class="p-4 border-t border-blue-800">
+            <button @click="sidebarOpen = !sidebarOpen" class="w-full text-left text-sm opacity-75 hover:opacity-100">
+                <svg x-show="sidebarOpen" class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+                </svg>
+                <svg x-show="!sidebarOpen" class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+                </svg>
+            </button>
+        </div>
+    </aside>
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-white shadow-sm border-b">
+            <div class="flex items-center justify-between px-6 py-4">
+                <div class="flex items-center">
+                    <button @click="mobileMenu = !mobileMenu" class="md:hidden p-2 -ms-2 me-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                    <h2 class="text-xl font-semibold text-gray-800">{% block page_title %}{{ t.nav_dashboard }}{% endblock %}</h2>
+                </div>
+                
+                <div class="flex items-center space-x-4 {% if rtl %}space-x-reverse{% endif %}">
+                    <a href="?lang={% if lang == 'ar' %}en{% else %}ar{% endif %}" class="text-sm text-gray-600 hover:text-gray-900">
+                        {% if lang == 'ar' %}EN{% else %}عربي{% endif %}
+                    </a>
+                    
+                    <div class="relative" x-data="{ open: false }">
+                        <button @click="open = !open" class="flex items-center space-x-2 {% if rtl %}space-x-reverse{% endif %}">
+                            <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
+                                {{ user.full_name[0] if user.full_name else user.username[0] }}
+                            </div>
+                            <span class="hidden md:inline text-sm text-gray-700">{{ user.full_name or user.username }}</span>
+                        </button>
+                        
+                        <div x-show="open" @click.away="open = false" class="absolute {% if rtl %}left-0{% else %}right-0{% endif %} mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-50">
+                            <div class="px-4 py-2 border-b">
+                                <p class="text-sm font-medium text-gray-900">{{ user.full_name or user.username }}</p>
+                                <p class="text-xs text-gray-500">{{ user.role }}</p>
+                            </div>
+                            <a href="#" onclick="logout()" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
+                                {{ t.nav_logout }}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    <div x-show="mobileMenu" class="fixed inset-0 z-50 md:hidden" @click="mobileMenu = false">
+        <div class="absolute inset-0 bg-black opacity-50"></div>
+        <div class="absolute inset-y-0 {% if rtl %}right-0{% else %}left-0{% endif %} w-64 gradient-bg text-white" @click.stop>
+            <div class="p-4 border-b border-blue-800 flex justify-between items-center">
+                <h1 class="text-xl font-bold">{{ t.app_name }}</h1>
+                <button @click="mobileMenu = false" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <nav class="py-4">
+                <a href="/dashboard?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3">
+                    <span>{{ t.nav_dashboard }}</span>
+                </a>
+                <a href="/optimization?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3">
+                    <span>{{ t.nav_optimization }}</span>
+                </a>
+                <a href="/assets?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3">
+                    <span>{{ t.nav_assets }}</span>
+                </a>
+                <a href="/integrations?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3">
+                    <span>{{ t.nav_integrations }}</span>
+                </a>
+                <a href="/work-orders?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3">
+                    <span>{{ t.nav_work_orders }}</span>
+                </a>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login?lang={{ lang }}';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.auth_login }} - {{ t.app_name }}{% endblock %}
+
+{% block body %}
+<div class="min-h-screen gradient-bg flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 animate-fade-in" x-data="loginForm()">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">{{ t.app_name }}</h1>
+            <p class="text-gray-600 mt-2">{{ t.app_tagline }}</p>
+        </div>
+        
+        <div class="flex justify-end mb-6">
+            <a href="?lang={% if lang == 'ar' %}en{% else %}ar{% endif %}" class="text-sm text-blue-600 hover:text-blue-800">
+                {% if lang == 'ar' %}English{% else %}عربي{% endif %}
+            </a>
+        </div>
+        
+        <form @submit.prevent="submitLogin" class="space-y-6">
+            <div x-show="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg" x-text="error"></div>
+            
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">{{ t.auth_email }}</label>
+                <input type="email" id="email" x-model="email" required
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    placeholder="email@example.com">
+            </div>
+            
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">{{ t.auth_password }}</label>
+                <input type="password" id="password" x-model="password" required
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    placeholder="••••••••">
+            </div>
+            
+            <button type="submit" :disabled="loading"
+                class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed">
+                <span x-show="!loading">{{ t.auth_submit }}</span>
+                <span x-show="loading">{{ t.common_loading }}</span>
+            </button>
+        </form>
+        
+        <div class="mt-8 pt-6 border-t text-center text-sm text-gray-500">
+            <p>Demo Accounts:</p>
+            <p class="mt-2"><strong>Platform Owner:</strong> admin@optria.io / OptriA2024!</p>
+            <p><strong>Tenant Admin:</strong> demo@aramco.com / Demo2024!</p>
+        </div>
+        
+        <div class="mt-6 text-center">
+            <a href="/?lang={{ lang }}" class="text-blue-600 hover:text-blue-800 text-sm">
+                ← {{ t.nav_home }}
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+function loginForm() {
+    return {
+        email: '',
+        password: '',
+        loading: false,
+        error: '',
+        
+        async submitLogin() {
+            this.loading = true;
+            this.error = '';
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: this.email, password: this.password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    window.location.href = data.redirect_url + '?lang={{ lang }}';
+                } else {
+                    this.error = data.detail || '{{ t.auth_error }}';
+                }
+            } catch (e) {
+                this.error = '{{ t.common_error }}';
+            }
+            
+            this.loading = false;
+        }
+    }
+}
+</script>
+{% endblock %}

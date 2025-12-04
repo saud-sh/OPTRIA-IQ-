@@ -1,0 +1,90 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}{{ t.work_orders_title }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 animate-fade-in">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">{{ t.work_orders_title }}</h1>
+        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            {{ t.work_orders_create }}
+        </button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">Total</p>
+            <p class="text-2xl font-bold text-gray-900">{{ work_orders|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">{{ t.work_orders_status_open }}</p>
+            <p class="text-2xl font-bold text-blue-600">{{ work_orders|selectattr('status', 'equalto', 'open')|list|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">{{ t.work_orders_status_in_progress }}</p>
+            <p class="text-2xl font-bold text-orange-600">{{ work_orders|selectattr('status', 'equalto', 'in_progress')|list|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 card-shadow">
+            <p class="text-sm text-gray-500">{{ t.work_orders_status_completed }}</p>
+            <p class="text-2xl font-bold text-green-600">{{ work_orders|selectattr('status', 'equalto', 'completed')|list|length }}</p>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-xl card-shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Code</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Title</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Priority</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.common_status }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ t.common_actions }}</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for wo in work_orders %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{{ wo.code }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {% if rtl and wo.title_ar %}{{ wo.title_ar }}{% else %}{{ wo.title }}{% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                {% if wo.priority == 'high' %}bg-red-100 text-red-800
+                                {% elif wo.priority == 'medium' %}bg-yellow-100 text-yellow-800
+                                {% else %}bg-green-100 text-green-800{% endif %}">
+                                {{ wo.priority }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full 
+                                {% if wo.status == 'completed' %}bg-green-100 text-green-800
+                                {% elif wo.status == 'in_progress' %}bg-blue-100 text-blue-800
+                                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ wo.status }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ wo.due_date.strftime('%Y-%m-%d') if wo.due_date else '-' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <button class="text-blue-600 hover:text-blue-800">{{ t.common_view }}</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    {% if not work_orders %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                            No work orders found.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
