@@ -1,0 +1,168 @@
+You are the principal engineer for the OPTRIA IQ project on Replit.
+
+We are now in the FINAL verification phase.  
+We want to be 100% sure that:
+
+- All environment secrets are wired correctly.
+- The backend is using them properly.
+- All CRUD flows (create / update / delete) work end-to-end from the UI.
+- Integrations and optimization flags are respected.
+
+IMPORTANT CONSTRAINTS (DO NOT VIOLATE):
+
+- Do NOT run destructive DB migrations.
+- Do NOT drop tables or columns.
+- Do NOT change the existing multi-tenant schema.
+- Use the existing Neon production database via `DATABASE_URL`.
+- Keep tenant_id filtering and RBAC exactly as designed.
+
+========================
+1) VERIFY SECRETS WIRING
+========================
+
+Assume these secrets ALREADY EXIST in Replit App Secrets:
+
+- SESSION_SECRET
+- DATABASE_URL
+- PGDATABASE
+- PGHOST
+- PGPORT
+- PGUSER
+- PGPASSWORD
+
+- OPENAI_API_KEY
+- APP_ENV
+- DEMO_MODE
+- OPTIMIZATION_ENGINE_ENABLED
+- EXTERNAL_DB_ENABLE
+
+- OPCUA_USERNAME
+- OPCUA_PASSWORD
+- PI_BASE_URL
+- SAP_BASE_URL
+
+TASKS:
+
+1. Open `core/config.py` (or the main settings module) and verify that:
+   - All the variables above are read using `os.getenv(...)` with exactly the same names.
+   - There are sensible defaults ONLY for non-critical flags like DEMO_MODE or APP_ENV.
+   - OPENAI_API_KEY, DATABASE_URL and SESSION_SECRET are REQUIRED (fail fast if missing).
+
+2. In the integrations layer (`integrations/*`, `tenant_integrations` models, and any integration services):
+   - Use PI_BASE_URL, SAP_BASE_URL, OPCUA_USERNAME, OPCUA_PASSWORD and EXTERNAL_DB_ENABLE as GLOBAL DEFAULTS.
+   - Allow each tenant to override these values via the `tenant_integrations` table and UI.
+   - Make sure the UI clearly shows when it is using “Global defaults from secrets” vs “Tenant custom config”.
+
+3. In the optimization engine modules:
+   - Make sure `OPTIMIZATION_ENGINE_ENABLED` and `DEMO_MODE` are used as feature flags:
+     - If OPTIMIZATION_ENGINE_ENABLED = false → do NOT run optimization jobs.
+     - If DEMO_MODE = true → connect only to simulated data sources and DO NOT send any real commands to external systems.
+   - Add clear logging when optimization is skipped because of flags.
+
+4. Add a small internal diagnostics endpoint (if not already present), e.g.:
+
+   - `GET /internal/config/status` (protected, platform_owner only)
+
+   This endpoint MUST:
+   - NOT return any secret values.
+   - ONLY indicate, for each subsystem, a boolean + source:
+     - database: ok
+     - openai: ok/missing
+     - optimization_engine: enabled/disabled (from OPTIMIZATION_ENGINE_ENABLED)
+     - external_db: enabled/disabled (from EXTERNAL_DB_ENABLE)
+     - pi_default_url: exists/empty
+     - sap_default_url: exists/empty
+     - opcua_default_creds: exists/empty
+
+   Use this endpoint ONLY for internal debugging.
+
+===============================
+2) END-TO-END CRUD VERIFICATION
+===============================
+
+We want to be sure the backend and UI are working like a real product.
+
+Implement a small automated smoke test script under `scripts/` such as:
+
+- `scripts/smoke_test_e2e.py`
+
+The script should:
+
+1. Use the existing database models / services (NOT direct SQL) to:
+   - Create a test tenant (or use an existing demo tenant).
+   - Create a site under that tenant.
+   - Create an asset under that site.
+   - Create an alert for that asset.
+   - Create a work order linked to that alert.
+   - Update the work order status.
+   - Delete or archive the test records safely at the end.
+
+2. Print a clear summary of:
+   - Created tenant/site/asset ids (or which demo tenant was used).
+   - Any failures or exceptions.
+
+3. This script must respect:
+   - tenant_id filtering
+   - RBAC logic (simulate actions using a tenant_admin + engineer user if possible).
+
+DO NOT touch the production demo data already in use.  
+If needed, create a dedicated tenant like `INTERNAL_SMOKE_TEST` and use it for this script.
+
+=============================================
+3) INTEGRATION FLAGS + BACKEND/FRONTEND FLOWS
+=============================================
+
+We already have integration UI pages for tenants. Now:
+
+1. Make sure the frontend and backend BOTH use EXTERNAL_DB_ENABLE to:
+   - Show or hide external DB / PI / SAP integration sections.
+   - Display a clear message if integrations are disabled at the platform level.
+
+2. On the tenant integration settings page:
+   - Add clear helper text to explain:
+     - If a field is left empty → the system will fall back to the global default from secrets.
+     - If a value is provided → it overrides the global setting ONLY for this tenant.
+
+3. Add a small “Test Connection” button for:
+   - PI
+   - SAP
+   - OPC-UA
+   - External DB
+
+   Each button should:
+   - Call a backend endpoint.
+   - Use either tenant-specific config OR fallback to secrets.
+   - Return a success/failure message to the UI.
+   - In DEMO_MODE, simulate success without real external calls.
+
+==================================
+4) FINAL VALIDATION & REPORT BACK
+==================================
+
+After implementing all of the above:
+
+1. Run the new smoke test script.
+2. Call the internal `/internal/config/status` endpoint.
+3. Visit the main dashboards and make sure:
+   - Assets, sites, alerts, and work orders can be created/edited/deleted without 500 errors.
+   - Tenant integrations page reflects the new logic.
+   - Optimization toggles behave as expected when changing DEMO_MODE and OPTIMIZATION_ENGINE_ENABLED.
+
+Finally, produce a concise report inside the repo as:
+
+- `OPS_INTEGRATION_VERIFICATION.md`
+
+The report should include:
+
+- Which secrets are required vs optional.
+- How they are used in backend and UI.
+- How tenants override integration settings.
+- How to run the smoke tests.
+- How to interpret `/internal/config/status`.
+
+IMPORTANT:  
+Do NOT modify the DB schema.  
+Do NOT delete data.  
+Do NOT change authentication models.
+
+Work strictly within the existing architecture.
