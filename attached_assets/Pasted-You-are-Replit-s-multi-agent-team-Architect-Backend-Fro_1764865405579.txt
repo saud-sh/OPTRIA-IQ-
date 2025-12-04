@@ -1,0 +1,168 @@
+You are Replit’s multi-agent team (Architect + Backend + Frontend + Integrations + Optimization + Security + Testing) working on OPTRIA IQ.
+
+I want you now to FOCUS on one clear goal:
+
+👉 Make the platform “integration-ready and tenant-onboard-ready” end-to-end.
+
+This means:
+
+1) Build full Integration configuration forms (UI + backend) for:
+
+   a) OPC-UA connector (per tenant)
+      - Fields:
+        * name
+        * endpoint_url
+        * security_mode (None, Sign, SignAndEncrypt)
+        * security_policy
+        * auth_type (Anonymous, UsernamePassword, Certificate)
+        * username/password (if applicable)
+        * certificate / private key (if applicable, can be text for now)
+        * namespace_filter / tag_prefix
+        * sampling_interval_ms
+        * max_tags_per_scan
+        * time_zone
+      - Actions:
+        * Test Connection button (per tenant integration)
+        * Enable/Disable toggle
+      - Everything must be tenant-scoped and RBAC-protected (tenant_admin only).
+
+   b) PI System / PI WebAPI connector
+      - Fields:
+        * name
+        * pi_webapi_url
+        * auth_type (Basic / Token / Kerberos)
+        * username/password or token
+        * af_database_path (optional)
+        * tag_filter / prefix
+        * sync_mode (last_24h / last_7d / full)
+        * time_zone
+      - Actions:
+        * Test Connection
+        * Enable/Disable
+
+   c) External DB connector (SQL / Oracle / PostgreSQL / MySQL)
+      - Fields:
+        * name
+        * db_type (oracle / sqlserver / postgres / mysql)
+        * host
+        * port
+        * database_name / service_name
+        * schema (optional)
+        * username
+        * password
+        * ssl_mode
+        * data_mode (raw_table / custom_query)
+        * table_name, timestamp_column, value_column, tag_column (for raw_table)
+        * custom_query (for custom_query mode)
+      - Actions:
+        * Test Connection
+        * Preview Sample Rows
+        * Enable/Disable
+
+   d) SAP PM / Oracle EAM connector
+      - Fields:
+        * name
+        * system_type (sap_pm / oracle_eam)
+        * base_url
+        * auth_type (Basic / OAuth2)
+        * username/password OR client_id/client_secret + token_url
+        * plant_code / company_code
+        * work_order_sync_mode (pull_only / push_and_sync)
+        * asset_mapping_mode (by_equipment_number / by_functional_location)
+      - Actions:
+        * Test Connection
+        * Enable/Disable
+
+   e) Identity Providers / SSO (Azure AD, Okta, Google)
+      - Fields:
+        * provider_type (azure_ad / okta / google)
+        * display_name
+        * client_id
+        * client_secret
+        * tenant_id or issuer_url / authority_url
+        * redirect_uri (read from app config)
+        * scopes
+        * is_enabled
+      - Actions:
+        * Test SSO configuration (at least verify discovery endpoints)
+      - NOTE: These settings must be per-tenant, and only tenant_admin can manage them.
+
+   f) Optimization Cost & Risk Model configuration (per tenant)
+      - Fields:
+        * default_downtime_cost_per_hour
+        * risk_appetite (low/medium/high)
+        * cost_per_asset_family (pumps, compressors, valves, etc. – can be stored as JSON)
+        * production_value_per_site or per_unit (optional for now)
+        * criticality_thresholds
+      - Use: the optimization engine should read these values when computing:
+        - maintenance prioritization
+        - deferral cost
+        - risk score
+
+2) Build Data Mapping UI (per tenant):
+
+   - New page, e.g. `/tenant/{tenant_id}/data-mapping`
+   - For each active integration:
+     * show external signals / tags (even as sample/fake in DEMO_MODE)
+     * allow tenant_admin to map:
+       - external_tag → asset → internal_metric_name (e.g. vibration_rms, temp, pressure)
+     - store mappings in a dedicated table:
+       - external_signal_mappings (id, tenant_id, integration_id, asset_id, external_tag, metric_name, unit, metadata_json)
+
+   - UI table should allow:
+     * Add mapping row
+     * Edit mapping
+     * Delete mapping
+     * Filter by integration
+
+3) Build an Onboarding Wizard for tenant_admin:
+
+   - New page: `/tenant/onboarding` or a section in the dashboard
+   - Steps:
+     1) Complete Tenant Profile (basic info)
+     2) Configure Integrations (at least one data source)
+     3) Test all configured connections
+     4) Map external tags/signals to internal assets/metrics
+     5) Configure Optimization Cost & Risk Model
+     6) Run first Optimization scenario (Maintenance Prioritization)
+
+   - Show progress per step (completed / pending)
+   - Each step should link to the appropriate page (Settings, Integrations, Data Mapping, Optimization).
+
+4) Action buttons after successful integration:
+
+   - For each integration in the UI list:
+     * [Test Connection] – calls backend test endpoint
+     * [Open Mapping] – navigates to mapping page filtered by this integration
+     * [Start Demo Stream] – in DEMO_MODE, start generating synthetic data for this integration
+     * [Run AI & Optimization] – triggers a background task to:
+       - ingest data
+       - compute AI metrics (health, anomaly, RUL)
+       - run at least one optimization run
+       - show the results in the tenant optimization dashboard
+
+5) Respect the following constraints:
+
+   - Do NOT add destructive migrations.
+   - All new tables must include tenant_id and be properly indexed where needed.
+   - All new routes must be RBAC-protected:
+     * Integrations & Data Mapping & Cost Model → tenant_admin (and platform_owner if cross-tenant).
+   - Secrets like database credentials, OpenAI keys, email provider keys etc. must be read from environment variables, NOT hardcoded.
+
+6) Clarify which environment variables the human operator must set in Replit (e.g. OPENAI_API_KEY, EMAIL_PROVIDER_API_KEY, etc.) and use safe defaults or DEMO_MODE if they are missing.
+
+7) After implementation, run:
+   - Route verification (no 500 errors).
+   - Test all Integration forms (render + submit + validation).
+   - Test Data Mapping UI.
+   - Test Onboarding Wizard steps.
+   - Confirm everything works end-to-end with the existing production database and background jobs.
+
+Please now:
+- Analyze the current code and templates.
+- Implement the above features step-by-step.
+- Then summarize:
+  * What’s implemented on backend (models/routes).
+  * What’s implemented on frontend (templates/pages/buttons).
+  * Which ENV variables are required from me.
+  * How a new tenant_admin would go through onboarding and connect real systems.
