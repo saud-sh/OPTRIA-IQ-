@@ -1,0 +1,277 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}Onboarding Wizard{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6 animate-fade-in" x-data="onboardingWizard()">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Welcome to OPTRIA IQ</h1>
+        <p class="text-gray-600 mt-2">Let's set up your tenant for optimal operations</p>
+    </div>
+    
+    <div class="bg-white rounded-xl card-shadow p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-gray-900">Setup Progress</h3>
+            <span class="text-blue-600 font-semibold" x-text="`${progress.progress_percent}% Complete`"></span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-3">
+            <div class="bg-blue-600 h-3 rounded-full transition-all duration-500" :style="`width: ${progress.progress_percent}%`"></div>
+        </div>
+    </div>
+    
+    <div class="space-y-4">
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('tenant_profile')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('tenant_profile') === 'completed' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('tenant_profile') === 'completed'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('tenant_profile') !== 'completed'" class="font-semibold">1</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Complete Tenant Profile</h4>
+                        <p class="text-sm text-gray-500">Basic information about your organization</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="getStepStatus('tenant_profile') === 'completed' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="getStepStatus('tenant_profile') === 'completed' ? 'Completed' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'tenant_profile' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'tenant_profile'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Your tenant profile has been created. You can update additional settings in the admin panel.</p>
+                <button @click="markStepComplete('tenant_profile')" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Mark as Complete
+                </button>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('configure_integration')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('configure_integration') === 'completed' || progress.computed_status?.has_integrations ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('configure_integration') === 'completed' || progress.computed_status?.has_integrations" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('configure_integration') !== 'completed' && !progress.computed_status?.has_integrations" class="font-semibold">2</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Configure Integrations</h4>
+                        <p class="text-sm text-gray-500">Connect at least one data source (OPC-UA, PI, SAP, SQL)</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="progress.computed_status?.has_integrations ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="progress.computed_status?.has_integrations ? 'Configured' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'configure_integration' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'configure_integration'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Configure at least one data integration to start collecting industrial data.</p>
+                <div class="flex gap-3">
+                    <a href="/integrations?lang={{ lang }}" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Go to Integrations
+                    </a>
+                    <button x-show="progress.computed_status?.has_integrations" @click="markStepComplete('configure_integration')" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Mark as Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('test_connections')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('test_connections') === 'completed' || progress.computed_status?.has_active_integrations ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('test_connections') === 'completed' || progress.computed_status?.has_active_integrations" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('test_connections') !== 'completed' && !progress.computed_status?.has_active_integrations" class="font-semibold">3</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Test Connections</h4>
+                        <p class="text-sm text-gray-500">Verify all configured integrations are working</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="progress.computed_status?.has_active_integrations ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="progress.computed_status?.has_active_integrations ? 'Tested' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'test_connections' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'test_connections'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Test each integration to ensure data can flow into the platform.</p>
+                <div class="flex gap-3">
+                    <a href="/integrations?lang={{ lang }}" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Test Integrations
+                    </a>
+                    <button x-show="progress.computed_status?.has_active_integrations" @click="markStepComplete('test_connections')" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Mark as Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('map_signals')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('map_signals') === 'completed' || progress.computed_status?.has_mappings ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('map_signals') === 'completed' || progress.computed_status?.has_mappings" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('map_signals') !== 'completed' && !progress.computed_status?.has_mappings" class="font-semibold">4</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Map External Signals</h4>
+                        <p class="text-sm text-gray-500">Map external tags to internal assets and metrics</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="progress.computed_status?.has_mappings ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="progress.computed_status?.has_mappings ? 'Mapped' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'map_signals' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'map_signals'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Create mappings between external data tags and your internal asset metrics.</p>
+                <div class="flex gap-3">
+                    <a href="/integrations?lang={{ lang }}#mappings" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Configure Mappings
+                    </a>
+                    <button x-show="progress.computed_status?.has_mappings" @click="markStepComplete('map_signals')" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Mark as Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('configure_cost_model')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('configure_cost_model') === 'completed' || progress.computed_status?.has_cost_model ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('configure_cost_model') === 'completed' || progress.computed_status?.has_cost_model" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('configure_cost_model') !== 'completed' && !progress.computed_status?.has_cost_model" class="font-semibold">5</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Configure Cost & Risk Model</h4>
+                        <p class="text-sm text-gray-500">Set up cost parameters for optimization calculations</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="progress.computed_status?.has_cost_model ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="progress.computed_status?.has_cost_model ? 'Configured' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'configure_cost_model' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'configure_cost_model'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Configure downtime costs, risk appetite, and asset family costs for accurate optimization.</p>
+                <div class="flex gap-3">
+                    <a href="/integrations?lang={{ lang }}#cost" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Configure Cost Model
+                    </a>
+                    <button x-show="progress.computed_status?.has_cost_model" @click="markStepComplete('configure_cost_model')" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Mark as Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+            <div class="p-6 flex items-center justify-between cursor-pointer" @click="toggleStep('run_first_optimization')">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getStepStatus('run_first_optimization') === 'completed' || progress.computed_status?.has_optimization_run ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'">
+                        <svg x-show="getStepStatus('run_first_optimization') === 'completed' || progress.computed_status?.has_optimization_run" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-show="getStepStatus('run_first_optimization') !== 'completed' && !progress.computed_status?.has_optimization_run" class="font-semibold">6</span>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900">Run First Optimization</h4>
+                        <p class="text-sm text-gray-500">Execute your first maintenance prioritization analysis</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 text-sm rounded-full" :class="progress.computed_status?.has_optimization_run ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'" x-text="progress.computed_status?.has_optimization_run ? 'Completed' : 'Pending'"></span>
+                    <svg class="w-5 h-5 text-gray-400 transform transition-transform" :class="expandedStep === 'run_first_optimization' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </div>
+            <div x-show="expandedStep === 'run_first_optimization'" x-collapse class="border-t px-6 py-4 bg-gray-50">
+                <p class="text-gray-600 mb-4">Run a maintenance prioritization analysis to see OPTRIA IQ in action.</p>
+                <div class="flex gap-3">
+                    <a href="/optimization?lang={{ lang }}" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Go to Optimization
+                    </a>
+                    <button x-show="progress.computed_status?.has_optimization_run" @click="markStepComplete('run_first_optimization')" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Mark as Complete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="progress.status === 'completed'" class="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+        <svg class="w-16 h-16 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <h3 class="text-xl font-bold text-green-800 mb-2">Onboarding Complete!</h3>
+        <p class="text-green-600 mb-4">You're all set to use OPTRIA IQ. Start optimizing your industrial operations.</p>
+        <a href="/dashboard?lang={{ lang }}" class="inline-block px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+            Go to Dashboard
+        </a>
+    </div>
+</div>
+
+<script>
+function onboardingWizard() {
+    return {
+        progress: {
+            steps: {},
+            progress_percent: 0,
+            computed_status: {}
+        },
+        expandedStep: null,
+        
+        async init() {
+            await this.loadProgress();
+        },
+        
+        async loadProgress() {
+            const res = await fetch('/api/integrations/onboarding/progress');
+            if (res.ok) {
+                this.progress = await res.json();
+            }
+        },
+        
+        toggleStep(stepKey) {
+            this.expandedStep = this.expandedStep === stepKey ? null : stepKey;
+        },
+        
+        getStepStatus(stepKey) {
+            return this.progress.steps?.[stepKey]?.status || 'pending';
+        },
+        
+        async markStepComplete(stepKey) {
+            const res = await fetch('/api/integrations/onboarding/progress', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ step_key: stepKey, status: 'completed' })
+            });
+            if (res.ok) {
+                await this.loadProgress();
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

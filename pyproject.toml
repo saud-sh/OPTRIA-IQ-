@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.123.8",
     "flask-dance>=7.1.0",
     "flask-login>=0.6.3",
+    "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
     "jinja2>=3.1.6",
     "oauthlib>=3.3.1",

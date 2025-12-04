@@ -3,141 +3,778 @@
 {% block page_title %}{{ t.integrations_title }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6 animate-fade-in" x-data="integrationsPage()">
-    <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-gray-900">{{ t.integrations_title }}</h1>
-        <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-            {{ t.integrations_add }}
-        </button>
-    </div>
-    
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {% for integration in integrations %}
-        <div class="bg-white rounded-xl p-6 card-shadow">
-            <div class="flex items-start justify-between mb-4">
-                <div>
-                    <h3 class="font-semibold text-gray-900">{{ integration.name }}</h3>
-                    <p class="text-sm text-gray-500">{{ integration.integration_type|upper }}</p>
-                </div>
-                <span class="px-2 py-1 text-xs font-medium rounded-full 
-                    {% if integration.status == 'active' %}bg-green-100 text-green-800
-                    {% elif integration.status == 'error' %}bg-red-100 text-red-800
-                    {% else %}bg-gray-100 text-gray-800{% endif %}">
-                    {{ integration.status }}
-                </span>
-            </div>
-            
-            <div class="space-y-2 text-sm text-gray-600">
-                <p>Last sync: {{ integration.last_sync_at.strftime('%Y-%m-%d %H:%M') if integration.last_sync_at else 'Never' }}</p>
-            </div>
-            
-            <div class="mt-4 pt-4 border-t flex space-x-2 {% if rtl %}space-x-reverse{% endif %}">
-                <button @click="testConnection({{ integration.id }})" class="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm">
-                    {{ t.integrations_test }}
-                </button>
-                <button class="px-3 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                </button>
-            </div>
+<div class="space-y-6 animate-fade-in" x-data="integrationsApp()">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ t.integrations_title }}</h1>
+            <p class="text-gray-600 mt-1">Manage data sources, signal mappings, SSO providers, and cost models</p>
         </div>
-        {% endfor %}
-        
-        {% if not integrations %}
-        <div class="col-span-full bg-white rounded-xl p-12 card-shadow text-center">
-            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
-            </svg>
-            <p class="text-gray-500 mb-4">No integrations configured yet.</p>
-            <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                {{ t.integrations_add }}
+        <div class="flex gap-2">
+            <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Add Integration
             </button>
         </div>
-        {% endif %}
+    </div>
+    
+    <div class="border-b border-gray-200">
+        <nav class="flex space-x-8 {% if rtl %}space-x-reverse{% endif %}" aria-label="Tabs">
+            <button @click="activeTab = 'integrations'" :class="activeTab === 'integrations' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                Data Sources
+            </button>
+            <button @click="activeTab = 'mappings'" :class="activeTab === 'mappings' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                Signal Mappings
+            </button>
+            <button @click="activeTab = 'sso'" :class="activeTab === 'sso' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                SSO / Identity
+            </button>
+            <button @click="activeTab = 'cost'" :class="activeTab === 'cost' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                Cost & Risk Model
+            </button>
+        </nav>
+    </div>
+    
+    <div x-show="activeTab === 'integrations'" x-transition>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <template x-for="integration in integrations" :key="integration.id">
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex items-start justify-between mb-4">
+                        <div>
+                            <h3 class="font-semibold text-gray-900" x-text="integration.name"></h3>
+                            <p class="text-sm text-gray-500" x-text="getIntegrationTypeName(integration.integration_type)"></p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-medium rounded-full" 
+                            :class="{
+                                'bg-green-100 text-green-800': integration.status === 'active',
+                                'bg-yellow-100 text-yellow-800': integration.status === 'streaming',
+                                'bg-red-100 text-red-800': integration.status === 'error',
+                                'bg-gray-100 text-gray-800': integration.status === 'inactive'
+                            }" x-text="integration.status">
+                        </span>
+                    </div>
+                    
+                    <div class="space-y-2 text-sm text-gray-600 mb-4">
+                        <p>Last sync: <span x-text="integration.last_sync_at ? new Date(integration.last_sync_at).toLocaleString() : 'Never'"></span></p>
+                        <p x-show="integration.demo_stream_active" class="text-blue-600 flex items-center gap-1">
+                            <span class="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                            Demo stream active
+                        </p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <button @click="testConnection(integration.id)" class="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            Test
+                        </button>
+                        <button @click="openMappings(integration.id)" class="px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition text-sm flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101"/>
+                            </svg>
+                            Map
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <button @click="toggleDemoStream(integration)" class="px-3 py-2 rounded-lg transition text-sm flex items-center justify-center gap-1"
+                            :class="integration.demo_stream_active ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path x-show="!integration.demo_stream_active" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path x-show="integration.demo_stream_active" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span x-text="integration.demo_stream_active ? 'Stop' : 'Demo'"></span>
+                        </button>
+                        <button @click="runAIOptimization(integration.id)" class="px-3 py-2 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition text-sm flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                            </svg>
+                            AI Run
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t flex justify-between">
+                        <button @click="editIntegration(integration)" class="text-blue-600 hover:text-blue-800 text-sm">Configure</button>
+                        <button @click="viewLogs(integration.id)" class="text-gray-500 hover:text-gray-700 text-sm">View Logs</button>
+                    </div>
+                </div>
+            </template>
+            
+            <template x-if="integrations.length === 0">
+                <div class="col-span-full bg-white rounded-xl p-12 card-shadow text-center">
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
+                    </svg>
+                    <p class="text-gray-500 mb-4">No integrations configured yet.</p>
+                    <button @click="showAddModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        Add Your First Integration
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+    
+    <div x-show="activeTab === 'mappings'" x-transition>
+        <div class="bg-white rounded-xl card-shadow">
+            <div class="p-6 border-b flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-gray-900">Signal Mappings</h3>
+                    <p class="text-sm text-gray-500">Map external tags/signals to internal assets and metrics</p>
+                </div>
+                <div class="flex gap-2">
+                    <select x-model="mappingFilter.integration_id" @change="loadMappings()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                        <option value="">All Integrations</option>
+                        <template x-for="integration in integrations" :key="integration.id">
+                            <option :value="integration.id" x-text="integration.name"></option>
+                        </template>
+                    </select>
+                    <button @click="showAddMappingModal = true" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
+                        Add Mapping
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">External Tag</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Scale/Offset</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="mapping in mappings" :key="mapping.id">
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900" x-text="mapping.external_tag"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="getAssetName(mapping.asset_id)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" x-text="mapping.internal_metric_name"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="mapping.unit || '-'"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="`×${mapping.scaling_factor} + ${mapping.offset_value}`"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <button @click="editMapping(mapping)" class="text-blue-600 hover:text-blue-800 me-2">Edit</button>
+                                    <button @click="deleteMapping(mapping.id)" class="text-red-600 hover:text-red-800">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="mappings.length === 0">
+                            <tr>
+                                <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                    No mappings configured. Add mappings to connect external signals to your assets.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="activeTab === 'sso'" x-transition>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <template x-for="provider in ssoProviders" :key="provider.id">
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                                <span x-text="provider.provider_type === 'azure_ad' ? '🔷' : provider.provider_type === 'okta' ? '🔶' : '🔴'"></span>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-900" x-text="provider.display_name || provider.name"></h3>
+                                <p class="text-sm text-gray-500" x-text="getProviderTypeName(provider.provider_type)"></p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" :checked="provider.is_active" @change="toggleSSO(provider)" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <p>Client ID: <span class="font-mono" x-text="provider.client_id?.substring(0, 20) + '...'"></span></p>
+                        <p>Status: <span :class="provider.last_sync_status === 'success' ? 'text-green-600' : 'text-gray-500'" x-text="provider.last_sync_status || 'Not tested'"></span></p>
+                    </div>
+                    <div class="mt-4 pt-4 border-t flex justify-between">
+                        <button @click="testSSO(provider.id)" class="text-blue-600 hover:text-blue-800 text-sm">Test SSO</button>
+                        <button @click="editSSO(provider)" class="text-gray-500 hover:text-gray-700 text-sm">Configure</button>
+                    </div>
+                </div>
+            </template>
+            
+            <div class="bg-white rounded-xl p-6 card-shadow border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition" @click="showAddSSOModal = true">
+                <svg class="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                <span class="text-gray-600">Add SSO Provider</span>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="activeTab === 'cost'" x-transition>
+        <div class="bg-white rounded-xl card-shadow p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="font-semibold text-gray-900 text-lg">Optimization Cost & Risk Model</h3>
+                    <p class="text-sm text-gray-500">Configure cost parameters used in optimization calculations</p>
+                </div>
+                <button @click="saveCostModel()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    Save Changes
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Default Downtime Cost (per hour)</label>
+                    <div class="flex">
+                        <input type="number" x-model.number="costModel.default_downtime_cost_per_hour" class="flex-1 px-4 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500">
+                        <span class="px-4 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg text-gray-600" x-text="costModel.currency"></span>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Risk Appetite</label>
+                    <select x-model="costModel.risk_appetite" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="low">Low - Conservative</option>
+                        <option value="medium">Medium - Balanced</option>
+                        <option value="high">High - Aggressive</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                    <select x-model="costModel.currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="SAR">SAR - Saudi Riyal</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="EUR">EUR - Euro</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Production Value (per unit)</label>
+                    <input type="number" x-model.number="costModel.production_value_per_unit" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Optional">
+                </div>
+            </div>
+            
+            <div class="mt-6">
+                <h4 class="font-medium text-gray-900 mb-4">Cost per Asset Family</h4>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <template x-for="(cost, family) in costModel.cost_per_asset_family" :key="family">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1 capitalize" x-text="family.replace('_', ' ')"></label>
+                            <input type="number" x-model.number="costModel.cost_per_asset_family[family]" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                        </div>
+                    </template>
+                </div>
+            </div>
+            
+            <div class="mt-6">
+                <h4 class="font-medium text-gray-900 mb-4">Criticality Thresholds</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <template x-for="(threshold, level) in costModel.criticality_thresholds" :key="level">
+                        <div>
+                            <label class="block text-xs font-medium mb-1 capitalize" :class="{
+                                'text-red-600': level === 'critical',
+                                'text-orange-600': level === 'high',
+                                'text-yellow-600': level === 'medium',
+                                'text-green-600': level === 'low'
+                            }" x-text="level"></label>
+                            <input type="number" x-model.number="costModel.criticality_thresholds[level]" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" min="0" max="100">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div x-show="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center" style="display: none;">
         <div class="absolute inset-0 bg-black opacity-50" @click="showAddModal = false"></div>
-        <div class="relative bg-white rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ t.integrations_add }}</h3>
+        <div class="relative bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Add Integration</h3>
             
             <form @submit.prevent="createIntegration">
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                        <input type="text" x-model="newIntegration.name" required
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <input type="text" x-model="newIntegration.name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                        <select x-model="newIntegration.integration_type" required
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select x-model="newIntegration.integration_type" @change="loadIntegrationSchema()" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             <option value="">Select type...</option>
-                            <option value="demo">Demo (Simulated Data)</option>
-                            <option value="opcua">OPC-UA</option>
-                            <option value="pi">PI Historian</option>
-                            <option value="sap">SAP PM</option>
-                            <option value="sql">SQL Database</option>
+                            <template x-for="type in integrationTypes" :key="type.type">
+                                <option :value="type.type" x-text="type.name"></option>
+                            </template>
                         </select>
+                        <p class="text-sm text-gray-500 mt-1" x-text="currentSchema?.description"></p>
                     </div>
+                    
+                    <template x-if="currentSchema?.fields">
+                        <div class="space-y-4 pt-4 border-t">
+                            <template x-for="field in currentSchema.fields" :key="field.name">
+                                <div x-show="shouldShowField(field)">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1" x-text="field.label"></label>
+                                    
+                                    <template x-if="field.type === 'text'">
+                                        <input type="text" x-model="newIntegration.config[field.name]" :placeholder="field.placeholder" :required="field.required" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </template>
+                                    
+                                    <template x-if="field.type === 'password'">
+                                        <input type="password" x-model="newIntegration.config[field.name]" :required="field.required" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </template>
+                                    
+                                    <template x-if="field.type === 'number'">
+                                        <input type="number" x-model.number="newIntegration.config[field.name]" :placeholder="field.default" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </template>
+                                    
+                                    <template x-if="field.type === 'select'">
+                                        <select x-model="newIntegration.config[field.name]" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <template x-for="option in field.options" :key="option">
+                                                <option :value="option" :selected="option === field.default" x-text="option"></option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                    
+                                    <template x-if="field.type === 'textarea'">
+                                        <textarea x-model="newIntegration.config[field.name]" :placeholder="field.placeholder" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
                 </div>
                 
                 <div class="mt-6 flex space-x-3 {% if rtl %}space-x-reverse{% endif %}">
                     <button type="button" @click="showAddModal = false" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
-                        {{ t.common_cancel }}
+                        Cancel
                     </button>
                     <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                        {{ t.common_save }}
+                        Create Integration
                     </button>
                 </div>
             </form>
         </div>
     </div>
     
-    <div x-show="testResult" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-sm" style="display: none;">
-        <div :class="testResult?.success ? 'text-green-600' : 'text-red-600'" class="font-medium" x-text="testResult?.message"></div>
+    <div x-show="showAddMappingModal" class="fixed inset-0 z-50 flex items-center justify-center" style="display: none;">
+        <div class="absolute inset-0 bg-black opacity-50" @click="showAddMappingModal = false"></div>
+        <div class="relative bg-white rounded-xl p-6 w-full max-w-lg mx-4" @click.stop>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Add Signal Mapping</h3>
+            
+            <form @submit.prevent="createMapping">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Integration</label>
+                        <select x-model.number="newMapping.integration_id" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <template x-for="integration in integrations" :key="integration.id">
+                                <option :value="integration.id" x-text="integration.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">External Tag</label>
+                        <input type="text" x-model="newMapping.external_tag" required placeholder="e.g., PI:PUMP001.VIB_RMS" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Asset</label>
+                        <select x-model.number="newMapping.asset_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Select asset...</option>
+                            <template x-for="asset in assets" :key="asset.id">
+                                <option :value="asset.id" x-text="asset.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Internal Metric Name</label>
+                        <select x-model="newMapping.internal_metric_name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Select metric...</option>
+                            <option value="vibration_rms">Vibration RMS</option>
+                            <option value="temperature">Temperature</option>
+                            <option value="pressure">Pressure</option>
+                            <option value="flow_rate">Flow Rate</option>
+                            <option value="current">Current</option>
+                            <option value="voltage">Voltage</option>
+                            <option value="power">Power</option>
+                            <option value="speed">Speed</option>
+                            <option value="level">Level</option>
+                            <option value="humidity">Humidity</option>
+                        </select>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                            <input type="text" x-model="newMapping.unit" placeholder="mm/s" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Scale Factor</label>
+                            <input type="number" step="0.001" x-model.number="newMapping.scaling_factor" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Offset</label>
+                            <input type="number" step="0.001" x-model.number="newMapping.offset_value" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex space-x-3">
+                    <button type="button" @click="showAddMappingModal = false" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create Mapping</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="showAddSSOModal" class="fixed inset-0 z-50 flex items-center justify-center" style="display: none;">
+        <div class="absolute inset-0 bg-black opacity-50" @click="showAddSSOModal = false"></div>
+        <div class="relative bg-white rounded-xl p-6 w-full max-w-lg mx-4" @click.stop>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Add SSO Provider</h3>
+            
+            <form @submit.prevent="createSSO">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Provider Type</label>
+                        <select x-model="newSSO.provider_type" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Select provider...</option>
+                            <option value="azure_ad">Microsoft Azure AD</option>
+                            <option value="okta">Okta</option>
+                            <option value="google">Google Workspace</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+                        <input type="text" x-model="newSSO.display_name" required placeholder="Sign in with..." class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                        <input type="text" x-model="newSSO.client_id" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+                        <input type="password" x-model="newSSO.client_secret" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div x-show="newSSO.provider_type === 'azure_ad'">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
+                        <input type="text" x-model="newSSO.tenant_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div x-show="newSSO.provider_type === 'okta'">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Issuer URL</label>
+                        <input type="text" x-model="newSSO.issuer_url" placeholder="https://your-domain.okta.com" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex space-x-3">
+                    <button type="button" @click="showAddSSOModal = false" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add Provider</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="notification.show" x-transition class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-sm z-50" style="display: none;">
+        <div :class="notification.type === 'success' ? 'text-green-600' : 'text-red-600'" class="font-medium" x-text="notification.message"></div>
     </div>
 </div>
 
 <script>
-function integrationsPage() {
+function integrationsApp() {
     return {
+        activeTab: 'integrations',
+        integrations: [],
+        integrationTypes: [],
+        currentSchema: null,
+        mappings: [],
+        ssoProviders: [],
+        assets: [],
+        costModel: {
+            default_downtime_cost_per_hour: 10000,
+            risk_appetite: 'medium',
+            currency: 'SAR',
+            production_value_per_unit: null,
+            cost_per_asset_family: {
+                pump: 5000,
+                compressor: 15000,
+                valve: 2000,
+                motor: 8000,
+                turbine: 25000,
+                heat_exchanger: 10000
+            },
+            criticality_thresholds: {
+                critical: 90,
+                high: 70,
+                medium: 50,
+                low: 30
+            }
+        },
+        
         showAddModal: false,
-        newIntegration: { name: '', integration_type: '' },
-        testResult: null,
+        showAddMappingModal: false,
+        showAddSSOModal: false,
+        
+        newIntegration: { name: '', integration_type: '', config: {} },
+        newMapping: { integration_id: null, external_tag: '', asset_id: null, internal_metric_name: '', unit: '', scaling_factor: 1.0, offset_value: 0.0 },
+        newSSO: { provider_type: '', display_name: '', client_id: '', client_secret: '', tenant_id: '', issuer_url: '' },
+        
+        mappingFilter: { integration_id: '' },
+        
+        notification: { show: false, message: '', type: 'success' },
+        
+        async init() {
+            await this.loadIntegrations();
+            await this.loadIntegrationTypes();
+            await this.loadMappings();
+            await this.loadAssets();
+            await this.loadSSOProviders();
+            await this.loadCostModel();
+        },
+        
+        async loadIntegrations() {
+            const res = await fetch('/api/integrations/');
+            if (res.ok) this.integrations = await res.json();
+        },
+        
+        async loadIntegrationTypes() {
+            const res = await fetch('/api/integrations/types');
+            if (res.ok) this.integrationTypes = await res.json();
+        },
+        
+        async loadMappings() {
+            let url = '/api/integrations/mappings';
+            if (this.mappingFilter.integration_id) {
+                url += `?integration_id=${this.mappingFilter.integration_id}`;
+            }
+            const res = await fetch(url);
+            if (res.ok) this.mappings = await res.json();
+        },
+        
+        async loadAssets() {
+            const res = await fetch('/api/assets/');
+            if (res.ok) {
+                const data = await res.json();
+                this.assets = data.assets || [];
+            }
+        },
+        
+        async loadSSOProviders() {
+            const res = await fetch('/api/integrations/identity-providers');
+            if (res.ok) this.ssoProviders = await res.json();
+        },
+        
+        async loadCostModel() {
+            const res = await fetch('/api/integrations/cost-models/active');
+            if (res.ok) {
+                const data = await res.json();
+                if (data) this.costModel = { ...this.costModel, ...data };
+            }
+        },
+        
+        loadIntegrationSchema() {
+            const type = this.newIntegration.integration_type;
+            this.currentSchema = this.integrationTypes.find(t => t.type === type) || null;
+            this.newIntegration.config = {};
+            if (this.currentSchema?.fields) {
+                this.currentSchema.fields.forEach(f => {
+                    if (f.default !== undefined) {
+                        this.newIntegration.config[f.name] = f.default;
+                    }
+                });
+            }
+        },
+        
+        shouldShowField(field) {
+            if (!field.show_when) return true;
+            for (const [key, value] of Object.entries(field.show_when)) {
+                const currentValue = this.newIntegration.config[key];
+                if (Array.isArray(value)) {
+                    if (!value.includes(currentValue)) return false;
+                } else {
+                    if (currentValue !== value) return false;
+                }
+            }
+            return true;
+        },
         
         async createIntegration() {
-            try {
-                const response = await fetch('/api/integrations/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: this.newIntegration.name,
-                        integration_type: this.newIntegration.integration_type,
-                        config: {}
-                    })
-                });
-                
-                if (response.ok) {
-                    window.location.reload();
-                }
-            } catch (e) {
-                console.error(e);
+            const res = await fetch('/api/integrations/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.newIntegration)
+            });
+            if (res.ok) {
+                this.showAddModal = false;
+                this.showNotification('Integration created successfully', 'success');
+                await this.loadIntegrations();
+                this.newIntegration = { name: '', integration_type: '', config: {} };
+            } else {
+                const err = await res.json();
+                this.showNotification(err.detail || 'Failed to create integration', 'error');
             }
         },
         
         async testConnection(integrationId) {
-            try {
-                const response = await fetch(`/api/integrations/${integrationId}/test`, { method: 'POST' });
-                this.testResult = await response.json();
-                setTimeout(() => this.testResult = null, 3000);
-            } catch (e) {
-                this.testResult = { success: false, message: 'Connection failed' };
-                setTimeout(() => this.testResult = null, 3000);
+            this.showNotification('Testing connection...', 'success');
+            const res = await fetch(`/api/integrations/${integrationId}/test`, { method: 'POST' });
+            const data = await res.json();
+            this.showNotification(data.message, data.success ? 'success' : 'error');
+            await this.loadIntegrations();
+        },
+        
+        async toggleDemoStream(integration) {
+            const action = integration.demo_stream_active ? 'stop' : 'start';
+            const res = await fetch(`/api/integrations/${integration.id}/demo-stream/${action}`, { method: 'POST' });
+            if (res.ok) {
+                this.showNotification(`Demo stream ${action}ed`, 'success');
+                await this.loadIntegrations();
             }
+        },
+        
+        async runAIOptimization(integrationId) {
+            this.showNotification('Running AI & Optimization...', 'success');
+            const res = await fetch(`/api/integrations/${integrationId}/run-ai`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                this.showNotification('Optimization run started successfully', 'success');
+            } else {
+                this.showNotification('Failed to start optimization', 'error');
+            }
+        },
+        
+        openMappings(integrationId) {
+            this.activeTab = 'mappings';
+            this.mappingFilter.integration_id = integrationId;
+            this.loadMappings();
+        },
+        
+        async createMapping() {
+            const res = await fetch('/api/integrations/mappings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.newMapping)
+            });
+            if (res.ok) {
+                this.showAddMappingModal = false;
+                this.showNotification('Mapping created successfully', 'success');
+                await this.loadMappings();
+                this.newMapping = { integration_id: null, external_tag: '', asset_id: null, internal_metric_name: '', unit: '', scaling_factor: 1.0, offset_value: 0.0 };
+            }
+        },
+        
+        async deleteMapping(mappingId) {
+            if (!confirm('Are you sure you want to delete this mapping?')) return;
+            const res = await fetch(`/api/integrations/mappings/${mappingId}`, { method: 'DELETE' });
+            if (res.ok) {
+                this.showNotification('Mapping deleted', 'success');
+                await this.loadMappings();
+            }
+        },
+        
+        async createSSO() {
+            const res = await fetch('/api/integrations/identity-providers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider_type: this.newSSO.provider_type,
+                    name: this.newSSO.display_name,
+                    display_name: this.newSSO.display_name,
+                    client_id: this.newSSO.client_id,
+                    client_secret: this.newSSO.client_secret,
+                    tenant_id: this.newSSO.tenant_id,
+                    issuer_url: this.newSSO.issuer_url
+                })
+            });
+            if (res.ok) {
+                this.showAddSSOModal = false;
+                this.showNotification('SSO provider added', 'success');
+                await this.loadSSOProviders();
+                this.newSSO = { provider_type: '', display_name: '', client_id: '', client_secret: '', tenant_id: '', issuer_url: '' };
+            }
+        },
+        
+        async testSSO(providerId) {
+            const res = await fetch(`/api/integrations/identity-providers/${providerId}/test`, { method: 'POST' });
+            const data = await res.json();
+            this.showNotification(data.message, data.success ? 'success' : 'error');
+            await this.loadSSOProviders();
+        },
+        
+        async toggleSSO(provider) {
+            const res = await fetch(`/api/integrations/identity-providers/${provider.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: !provider.is_active })
+            });
+            if (res.ok) await this.loadSSOProviders();
+        },
+        
+        async saveCostModel() {
+            const res = await fetch('/api/integrations/cost-models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.costModel)
+            });
+            if (res.ok) {
+                this.showNotification('Cost model saved', 'success');
+            } else {
+                this.showNotification('Failed to save cost model', 'error');
+            }
+        },
+        
+        getIntegrationTypeName(type) {
+            const names = {
+                demo: 'Demo (Simulated)',
+                opcua: 'OPC-UA',
+                pi: 'PI System',
+                sap: 'SAP PM / Oracle EAM',
+                sql: 'External Database'
+            };
+            return names[type] || type.toUpperCase();
+        },
+        
+        getProviderTypeName(type) {
+            const names = {
+                azure_ad: 'Microsoft Azure AD',
+                okta: 'Okta',
+                google: 'Google Workspace'
+            };
+            return names[type] || type;
+        },
+        
+        getAssetName(assetId) {
+            if (!assetId) return '-';
+            const asset = this.assets.find(a => a.id === assetId);
+            return asset ? asset.name : `Asset #${assetId}`;
+        },
+        
+        editIntegration(integration) {
+            this.showNotification('Edit modal coming soon', 'success');
+        },
+        
+        viewLogs(integrationId) {
+            this.showNotification('Logs viewer coming soon', 'success');
+        },
+        
+        editMapping(mapping) {
+            this.showNotification('Edit mapping coming soon', 'success');
+        },
+        
+        editSSO(provider) {
+            this.showNotification('Edit SSO coming soon', 'success');
+        },
+        
+        showNotification(message, type) {
+            this.notification = { show: true, message, type };
+            setTimeout(() => this.notification.show = false, 3000);
         }
     }
 }

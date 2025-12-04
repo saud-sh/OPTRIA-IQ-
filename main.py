@@ -381,6 +381,29 @@ async def work_orders_page(
         "work_orders": work_orders
     })
 
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding_page(
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["tenant_admin", "platform_owner"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("onboarding/index.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user
+    })
+
 @app.get("/admin/tenants", response_class=HTMLResponse)
 async def admin_tenants_page(
     request: Request,

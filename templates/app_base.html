@@ -44,6 +44,15 @@
                 <span x-show="sidebarOpen">{{ t.nav_work_orders }}</span>
             </a>
             
+            {% if user.role in ['tenant_admin', 'platform_owner'] %}
+            <a href="/onboarding?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/onboarding' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                </svg>
+                <span x-show="sidebarOpen">Setup Wizard</span>
+            </a>
+            {% endif %}
+            
             {% if user.role == 'platform_owner' %}
             <div class="border-t border-blue-800 mt-4 pt-4">
                 <a href="/admin/tenants?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/admin' in request.url.path %}active{% endif %}">
