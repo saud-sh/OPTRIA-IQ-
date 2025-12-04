@@ -1,0 +1,456 @@
+You are Replit Agent 3 (multi-agent: Architect + Backend + Frontend + Security + Testing).
+
+You MUST strictly follow this Rock Technology protocol and Interoris Universal Protocol:
+
+- Architecture-first: produce a full blueprint BEFORE implementing any code.
+- No destructive DB changes: NO DROP TABLE, NO DROP COLUMN, NO CASCADE, NO destructive migrations.
+- Multi-tenant by design: tenant_id on all business tables, strict tenant isolation in all queries and routes.
+- RBAC enforced: consistent role-based access, no inline ad-hoc checks if a centralized capability system exists.
+- AI pipelines and Optimization engine must be separate, non-blocking, and callable via clear APIs.
+- DO NOT guess unclear requirements; document any assumption clearly in an ARCHITECTURE.md file.
+- Use tests, health checks, and security scanner before saying "done".
+- Everything must work fully inside Replit (backend + frontend + background jobs + demo data) with no external tools except Neon/Postgres.
+
+====================================
+PROJECT CONTEXT (READ CAREFULLY)
+====================================
+
+We are rebuilding OPTRIA IQ as:
+
+"OPTRIA IQ – Industrial Operations Optimization Platform"
+
+This is NOT just APM/Monitoring/CMMS.
+The new identity is an "Optimization-first" platform used by companies like ARAMCO, SABIC, SEC, and similar to:
+
+- AspenTech (Asset & Process Optimization)
+- Yokogawa (industrial automation & optimization)
+- Honeywell Forge
+- C3 AI
+
+The platform must:
+
+- Ingest data from industrial systems (sensors, OPC-UA, PI Historian, SCADA, SAP PM, Oracle EAM, SQL DBs).
+- Run AI models for:
+  - health score
+  - anomaly detection
+  - failure probability
+  - remaining useful life (RUL)
+- Run Optimization algorithms to answer questions like:
+  - Which plant or asset needs maintenance first?
+  - What is the cost of deferring maintenance?
+  - What is the risk to production for each asset/plant?
+  - What is the best time to dispatch engineers and schedule work?
+  - What is the optimal operating schedule to balance cost, risk, and production?
+
+We need a production-grade SaaS, multi-tenant, with:
+
+- Backend: Python + FastAPI
+- Frontend: Jinja2 templates + modern responsive UI (TailwindCSS or similar) + light JS (HTMX / Alpine.js or small vanilla JS) for interactions.
+- DB: PostgreSQL (Neon), with CLEAR separation between "core schema" and "AI/Optimization/Telemetry" tables.
+- Hosting context: Replit app + Neon Postgres. Assume fresh project. DO NOT touch any old schema; design new schema safely.
+
+The platform will be bilingual:
+- Arabic (default) + English (via ?lang=en toggle)
+- All important labels, buttons, and sections should support i18n-ready structure.
+
+====================================
+PHASE 0 – BLUEPRINT ONLY (NO CODE)
+====================================
+
+First, produce a complete system blueprint (in comments + ARCHITECTURE.md) BEFORE writing or editing any code.
+
+The blueprint MUST include:
+
+1) High-Level Architecture
+   - Overall diagram (written description) showing:
+     - Web frontend (landing page + app dashboard).
+     - Backend FastAPI service.
+     - AI/ML service layer.
+     - Optimization engine service layer.
+     - Data ingest & connectors layer (OPC-UA, PI, SAP, Oracle, SQL).
+     - Database (PostgreSQL).
+     - Background workers (for ingest, AI, optimization runs).
+   - Mention how everything runs fully inside Replit.
+
+2) Multi-Tenant & RBAC Model
+   - Clear description of tenants and users:
+     - platform_owner
+     - tenant_admin
+     - optimization_engineer (new role)
+     - reliability_engineer (optional, can map to engineer)
+     - viewer
+   - Exact RBAC matrix:
+     - What each role can see/do:
+       - manage tenants
+       - manage users
+       - manage integrations
+       - run optimization scenarios
+       - approve optimization plans
+       - view dashboards
+   - How tenant_id is enforced at:
+     - DB layer
+     - API routes
+     - UI routes
+
+3) Database Schema (ADD-ONLY, SAFE)
+   - Design a NEW, clean schema (even if we reuse some old concepts) including at minimum:
+
+   Core entities:
+   - tenants
+   - users
+   - sites
+   - assets
+   - asset_components (for hierarchy)
+   - asset_failure_modes (FMECA basic)
+   - work_orders (lightweight, only as “result” of optimization recommendations)
+   - alerts (event-level)
+   - asset_timeseries (mini-historian: time-series metrics)
+   - optimization_runs
+   - optimization_scenarios
+   - optimization_recommendations
+   - optimization_cost_models (cost of failure, cost of maintenance, energy cost)
+   - integrations (tenant_integrations)
+   - integration_mappings (map external tags/signals/assets into internal model)
+   - sso_identity_providers (tenant-level SSO)
+   - audit_logs (for security and traceability)
+
+   Requirements:
+   - All business tables must have tenant_id EXCEPT:
+     - platform metadata tables
+   - No destructive migrations.
+   - Use indexes where needed, but keep it simple and production-safe.
+
+4) Integration & Device Connectivity Design
+   - Design a connector abstraction layer:
+     - BaseConnector class
+     - Specific connector subclasses:
+       - OPCUAConnector
+       - PIWebAPIConnector
+       - SAPConnector (for assets and work orders)
+       - OracleEAMConnector
+       - GenericSQLConnector
+       - REST/WebhookConnector
+   - For each connector type:
+     - config structure (connection URL, credentials placeholder, mappings).
+     - health-check / test-connection method.
+     - how tags / signals are mapped to:
+       - assets
+       - asset_components
+       - asset_timeseries
+   - UI:
+     - Tenant-level Integrations page:
+       - list integrations with status.
+       - ability to configure:
+         - type (OPC-UA, PI, SAP, …)
+         - connection params
+         - mapping rules (basic UI to map external tag → asset/component/metric).
+       - Test connection button (use stubbed or simulated logic if needed).
+   - A DEMO mode:
+     - For Replit demo we don’t have real Aramco OPC, so:
+       - implement simulated connectors that generate example data, but keep architecture ready for real connections later.
+
+5) AI & Optimization Layer (Future-proof)
+   - AI service:
+     - Separate module (e.g. core/ai_service.py).
+     - Functions:
+       - compute_health_score(...)
+       - compute_failure_probability(...)
+       - estimate_rul(...)
+       - detect_anomaly(...)
+       - compute_production_risk(...)
+     - Works off:
+       - asset_timeseries
+       - failure modes
+       - cost models
+
+   - Optimization Engine:
+     - Separate module (e.g. core/optimization_engine.py).
+     - Use a safe, CPU-friendly library (e.g. OR-Tools or PuLP) if allowed by Replit; else implement simple heuristic solvers.
+     - Support at least 4 optimization problem types:
+       1) Maintenance Prioritization:
+          - Decide which assets/sites require maintenance first.
+       2) Maintenance Deferral Cost:
+          - Estimate cost of delaying each maintenance action.
+       3) Production Risk Optimization:
+          - Recommend operating profile to minimize risk on production.
+       4) Workforce Dispatch Optimization:
+          - Recommend best time/assignment for engineers based on:
+            - skill, availability, shifts, and asset priority.
+
+     - Each optimization_run must:
+       - take input parameters (objective, constraints, planning window).
+       - produce scenarios and recommendations.
+       - store them in optimization_runs + optimization_scenarios + optimization_recommendations tables.
+
+6) Frontend UX (Arabic + English, Modern, Responsive)
+   - Use Jinja2 templates + TailwindCSS (or equivalent) + light JS.
+   - Design:
+
+   a) Public Landing Page:
+      - Arabic by default, with EN toggle (?lang=en).
+      - Clearly explains OPTRIA IQ as:
+        - “Industrial Operations Optimization Platform”
+      - Sections:
+        - Hero: title + subtitle + CTA “Request demo” / “Login”.
+        - Who it’s for (ARAMCO, SABIC, SEC, major industrial players).
+        - Key value:
+          - Reduce downtime
+          - Optimize maintenance
+          - Reduce energy cost
+          - Increase production
+        - Features cards:
+          - Optimization engine
+          - AI health & RUL
+          - Integration with OPC-UA, PI, SAP, Oracle
+          - Multi-tenant SaaS
+        - Logos placeholders.
+        - “How it works” flow (3–4 steps).
+        - Footer with contact/info.
+
+   b) Auth & Onboarding:
+      - /login
+      - /signup (optional, but at least allow platform_owner to create tenants/users internally).
+      - Basic bilingual labels.
+      - Secure, with HTTPOnly cookies.
+
+   c) App Layout:
+      - Single layout (base.html) with:
+        - Responsive sidebar.
+        - Top navbar showing:
+          - Tenant switcher (for allowed tenants).
+          - Language toggle.
+          - Profile menu.
+        - Simple toast/notification area.
+
+   d) Main App Pages (for tenant_admin / optimization_engineer):
+      - Optimization Dashboard:
+        - KPIs:
+          - #assets
+          - current risk index
+          - upcoming maintenance actions
+          - estimated cost of deferral (summary)
+        - Cards for:
+          - “Run new optimization scenario”
+          - “View optimization history”
+        - Chart(s) showing:
+          - Production risk vs time
+          - Cost vs different scenarios (when selected).
+
+      - Assets & Failure Models:
+        - List of assets (filter by site, criticality…).
+        - Asset detail:
+          - hierarchy tree (site → unit → asset → component).
+          - recent AI metrics (health, RUL, failure probability).
+          - defined failure modes (FMECA basic).
+          - link to work orders and alerts.
+
+      - Optimization Scenarios:
+        - Page to:
+          - Create new scenario:
+            - choose problem type (Maintenance, Production, Workforce, Cost).
+            - planning horizon (e.g. next 7 days).
+            - objectives and constraints (e.g. max downtime).
+          - Run optimization.
+          - See results as:
+            - Tables.
+            - Simple Gantt/bars.
+            - Summary metrics.
+
+      - Integrations Management:
+        - List connectors.
+        - Create/edit integration:
+          - type, endpoint, credentials placeholders, mappings.
+          - Test connection.
+        - Show last sync time and status.
+
+      - Work Orders (light version):
+        - Only as “implementation of optimization decisions”.
+        - Show:
+          - title, asset, due date, status, assigned engineer.
+        - Allow:
+          - mark in-progress / done.
+        - This is NOT full CMMS, only for bridging.
+
+      - Audit & Logs:
+        - Simple table for important actions:
+          - new optimization run.
+          - changes in integrations.
+          - user/role changes.
+
+7) Health, Security, and Observability
+   - Implement /health/ready and /health/live endpoints:
+     - Check:
+       - DB connectivity.
+       - AI service availability (basic self-check).
+       - Optimization engine import/availability.
+       - Background jobs scheduler is alive (if applicable).
+       - Integration framework can at least list configured connectors.
+   - Security:
+     - JWT auth with HTTPOnly cookies.
+     - CSRF protection for important POST forms.
+     - CSP headers.
+     - Rate limiting on login (simple in-memory is fine for now).
+   - Logging:
+     - Structured logging (at least JSON-ish or key-value).
+     - Log:
+       - optimization runs.
+       - integration failures.
+       - auth events (WARNING/INFO only).
+
+8) Phases & Acceptance Criteria
+   - Define phases inside a PROJECT_PLAN.md:
+     - Phase 1: Blueprint + Core schema + Auth + RBAC + Tenant.
+     - Phase 2: Integrations & mini-Historian ingestion.
+     - Phase 3: AI service + basic health/RUL/failure.
+     - Phase 4: Optimization engine (at least Maintenance Prioritization).
+     - Phase 5: Optimization UI (Scenarios + Dashboard).
+     - Phase 6: Polish, health checks, privacy/security scan, demo tenants/data.
+   - Each phase must have:
+     - Scope
+     - Deliverables
+     - Tests
+     - “Done” checklist.
+
+ONLY AFTER finishing this blueprint and writing ARCHITECTURE.md, PROJECT_PLAN.md, and DB_SCHEMA.md, you may start coding.
+
+====================================
+IMPLEMENTATION – BACKEND + FRONTEND
+====================================
+
+After blueprint is written and approved internally (no human needed here, just be consistent), implement the system in phases:
+
+PHASE 1 – Project Setup, Config, Auth, RBAC, Tenants
+- Create the FastAPI app structure (app.py or main.py).
+- Config module with Pydantic settings (env-driven).
+  - DB connection string placeholder (Postgres).
+  - DEMO_MODE flag.
+- SQLAlchemy models and migrations or simple schema creator (no destructive operations).
+- Auth:
+  - User model with:
+    - email, username, password hash, role(s), tenant_id, is_active.
+  - JWT issuance & verification.
+  - HTTPOnly cookie-based session.
+- RBAC:
+  - Central capability matrix (e.g. core/capabilities.py).
+  - Dependencies for:
+    - require_platform_owner
+    - require_tenant_admin
+    - require_role_or_capability(...)
+- Tenants:
+  - Tenant model with basic info (name, code, industry, status).
+  - Platform owner can create tenants and seed one admin user per tenant.
+  - Make sure when platform_owner creates a tenant, the system also generates:
+    - initial tenant_admin user (with generated credentials).
+    - Show these credentials to the platform_owner in a secure “one-time” view.
+
+PHASE 2 – Integrations & Mini-Historian
+- Implement:
+  - BaseConnector + OPCUAConnector + PIConnector + SAPConnector + OracleConnector + SQLConnector + RESTConnector.
+  - DEMO connectors return fake but realistic time-series.
+- Add APIs and UI to:
+  - Create/edit/delete integrations.
+  - Test connection.
+- Implement:
+  - asset_timeseries ingestion job:
+    - For DEMO_MODE: periodically insert synthetic sensor data.
+- Make sure:
+  - All data is tenant-scoped.
+  - Integrations are per-tenant.
+
+PHASE 3 – AI Service
+- Implement core/ai_service.py:
+  - Given:
+    - asset_timeseries + failure modes + cost models
+  - Compute:
+    - health_score (0–100)
+    - failure_probability
+    - RUL (simple estimate)
+    - anomaly_flag
+    - production_risk_index
+- This can be heuristic/statistical initially (no GPU, CPU-only).
+- Add background worker to:
+  - Periodically compute AI metrics for active assets.
+
+PHASE 4 – Optimization Engine
+- Implement core/optimization_engine.py:
+  - Define models for:
+    - MaintenancePrioritizationProblem
+    - MaintenanceDeferralCostProblem
+    - ProductionRiskOptimizationProblem
+    - WorkforceDispatchProblem
+  - Each has:
+    - input struct
+    - solve() method
+    - output struct
+- Integrate with DB:
+  - Store inputs/outputs into:
+    - optimization_runs
+    - optimization_scenarios
+    - optimization_recommendations
+- Expose API endpoints to:
+  - Trigger optimization run.
+  - Fetch results per tenant.
+
+PHASE 5 – Frontend UX & Landing Page
+- Build landing page as described (Arabic default, English toggle).
+- Build app base layout with:
+  - Sidebar navigation per role.
+  - Top bar with tenant selector and language.
+- Build main pages:
+  - Optimization Dashboard
+  - Assets & Failure Models
+  - Optimization Scenarios
+  - Integrations
+  - Work Orders (light)
+  - Audit Logs
+- Make UI modern:
+  - Responsive
+  - With simple animations (fade, slide)
+  - Clear KPI cards
+- Ensure all texts support Arabic + English (can be a simple dict or function).
+
+PHASE 6 – Demo Data, Health Checks, Final Validation
+- Seed demo tenants:
+  - ARAMCO_DEMO
+  - POWER_DEMO
+  - WATER_DEMO
+- Seed:
+  - Sites
+  - Assets
+  - Failure modes
+  - Minimal cost models
+  - Synthetic time-series
+- Ensure:
+  - /health/ready and /health/live work correctly.
+  - No route returns 500 in normal flows.
+  - Tenant isolation is correct.
+  - DEMO_MODE does not require real external systems.
+
+====================================
+FINAL DELIVERABLES & WHAT TO SHOW THE HUMAN
+====================================
+
+At the end, you MUST:
+
+1) Provide a short human-readable summary (in Arabic + English) describing:
+   - What was built
+   - How to run it in Replit
+   - How to login as:
+     - platform_owner
+     - tenant_admin
+   - How to run an optimization scenario demo.
+
+2) List the environment variables the human must set in Replit:
+   - OPTRIA_DB_URL (Postgres connection string)
+   - OPTRIA_DEMO_MODE (true/false)
+   - JWT_SECRET_KEY
+   - Any others required.
+
+3) Confirm explicitly that:
+   - No destructive DB operations were used.
+   - Multi-tenant isolation is enforced.
+   - RBAC is enforced.
+   - Health endpoints are working.
+   - Demo is ready to show to ARAMCO-level clients.
+
+Follow all these instructions exactly. If anything is unclear, document the assumption in ARCHITECTURE.md and choose the safest, most enterprise-friendly default.
