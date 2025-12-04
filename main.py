@@ -176,6 +176,7 @@ def get_lang(request: Request) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def landing_page(request: Request):
+    """Landing page - renders instantly without DB operations"""
     lang = get_lang(request)
     trans = get_translation(lang)
     return templates.TemplateResponse("landing.html", {
@@ -184,6 +185,16 @@ async def landing_page(request: Request):
         "lang": lang,
         "rtl": lang == "ar"
     })
+
+@app.get("/health")
+async def health_check():
+    """Fast health check endpoint for deployment monitoring"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "app": settings.app_name,
+        "version": settings.app_version
+    }
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(
