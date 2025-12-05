@@ -44,6 +44,15 @@
                 <span x-show="sidebarOpen">{{ t.nav_work_orders }}</span>
             </a>
             
+            {% if user.role in ['platform_owner', 'tenant_admin', 'optimization_engineer', 'engineer'] %}
+            <a href="/blackbox/incidents?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/blackbox' in request.url.path %}active{% endif %}">
+                <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span x-show="sidebarOpen">{{ t.get('nav_blackbox', 'Black Box') }}</span>
+            </a>
+            {% endif %}
+            
             {% if user.role in ['tenant_admin', 'platform_owner'] %}
             <a href="/onboarding?lang={{ lang }}" class="sidebar-link flex items-center px-4 py-3 {% if '/onboarding' in request.url.path %}active{% endif %}">
                 <svg class="w-5 h-5 {% if sidebarOpen %}me-3{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">

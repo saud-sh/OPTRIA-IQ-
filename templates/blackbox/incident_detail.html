@@ -1,0 +1,361 @@
+{% extends "app_base.html" %}
+
+{% block title %}{{ t.get('incident_detail', 'incident_detail') }} - OPTRIA IQ{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="incidentDetail('{{ incident_id }}')">
+    <div class="flex justify-between items-center">
+        <div class="flex items-center gap-4">
+            <a href="/blackbox/incidents?lang={{ lang }}" class="text-gray-500 hover:text-gray-700">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M{{ 'M9 5l7 7-7 7' if lang == 'ar' else 'M15 19l-7-7 7-7' }}"/>
+                </svg>
+            </a>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">
+                    <span x-text="incident.incident_number || 'Loading...'"></span>
+                </h1>
+                <p class="text-gray-600 mt-1" x-text="incident.title || ''"></p>
+            </div>
+        </div>
+        <div class="flex gap-3">
+            <button @click="runRCA()" 
+                    class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                    :disabled="loading || incident.rca_status === 'COMPLETED'">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                {{ t.get('run_rca', 'run_rca') }}
+            </button>
+            <a :href="'/blackbox/incidents/' + incident.id + '/report?lang={{ lang }}'" 
+               class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                {{ t.get('view_report', 'view_report') }}
+            </a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('severity', 'severity') }}</p>
+            <span class="px-3 py-1 text-sm rounded-full mt-2 inline-block"
+                  :class="{
+                      'bg-red-100 text-red-800': incident.severity === 'CRITICAL',
+                      'bg-orange-100 text-orange-800': incident.severity === 'MAJOR',
+                      'bg-yellow-100 text-yellow-800': incident.severity === 'MINOR'
+                  }"
+                  x-text="incident.severity || '-'"></span>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('status', 'status') }}</p>
+            <div class="flex items-center gap-2 mt-2">
+                <select x-model="incident.status" @change="updateStatus()" class="rounded-lg border-gray-300 text-sm">
+                    <option value="OPEN">OPEN</option>
+                    <option value="INVESTIGATING">INVESTIGATING</option>
+                    <option value="RESOLVED">RESOLVED</option>
+                    <option value="CLOSED">CLOSED</option>
+                </select>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('start_time', 'start_time') }}</p>
+            <p class="text-lg font-semibold text-gray-900 mt-1" x-text="formatDate(incident.start_time)"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('event_count', 'event_count') }}</p>
+            <p class="text-2xl font-bold text-indigo-600" x-text="incident.event_count || 0"></p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+                <button @click="activeTab = 'summary'" 
+                        class="px-6 py-4 text-sm font-medium border-b-2 transition-colors"
+                        :class="activeTab === 'summary' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    {{ t.get('summary', 'summary') }}
+                </button>
+                <button @click="activeTab = 'timeline'" 
+                        class="px-6 py-4 text-sm font-medium border-b-2 transition-colors"
+                        :class="activeTab === 'timeline' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    {{ t.get('timeline', 'timeline') }}
+                </button>
+                <button @click="activeTab = 'rca'" 
+                        class="px-6 py-4 text-sm font-medium border-b-2 transition-colors"
+                        :class="activeTab === 'rca' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    {{ t.get('root_cause_analysis', 'root_cause_analysis') }}
+                </button>
+            </nav>
+        </div>
+
+        <div class="p-6" x-show="activeTab === 'summary'">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">{{ t.get('incident_details', 'incident_details') }}</h3>
+                    <dl class="space-y-3">
+                        <div class="flex justify-between border-b pb-2">
+                            <dt class="text-gray-600">{{ t.get('incident_type', 'incident_type') }}</dt>
+                            <dd class="font-medium" x-text="incident.incident_type"></dd>
+                        </div>
+                        <div class="flex justify-between border-b pb-2">
+                            <dt class="text-gray-600">{{ t.get('root_asset', 'root_asset') }}</dt>
+                            <dd class="font-medium" x-text="incident.root_asset_name || '-'"></dd>
+                        </div>
+                        <div class="flex justify-between border-b pb-2">
+                            <dt class="text-gray-600">{{ t.get('site', 'site') }}</dt>
+                            <dd class="font-medium" x-text="incident.site_name || '-'"></dd>
+                        </div>
+                        <div class="flex justify-between border-b pb-2">
+                            <dt class="text-gray-600">{{ t.get('duration', 'duration') }}</dt>
+                            <dd class="font-medium" x-text="calculateDuration()"></dd>
+                        </div>
+                    </dl>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">{{ t.get('description', 'description') }}</h3>
+                    <p class="text-gray-700" x-text="incident.description || '{{ t.get('no_description', 'no_description') }}'"></p>
+                    
+                    <h3 class="text-lg font-semibold mb-4 mt-6">{{ t.get('impact_scope', 'impact_scope') }}</h3>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <p class="text-sm text-gray-600">{{ t.get('affected_assets', 'affected_assets') }}: <span class="font-semibold" x-text="(incident.impact_scope?.assets || []).length"></span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6" x-show="activeTab === 'timeline'">
+            <div class="mb-4 flex justify-between items-center">
+                <h3 class="text-lg font-semibold">{{ t.get('event_timeline', 'event_timeline') }}</h3>
+                <div class="flex gap-2">
+                    <select x-model="timelineFilter.role" class="rounded-lg border-gray-300 text-sm">
+                        <option value="">{{ t.get('all_roles', 'all_roles') }}</option>
+                        <option value="CAUSE">CAUSE</option>
+                        <option value="SYMPTOM">SYMPTOM</option>
+                        <option value="CONTEXT">CONTEXT</option>
+                    </select>
+                    <select x-model="timelineFilter.severity" class="rounded-lg border-gray-300 text-sm">
+                        <option value="">{{ t.get('all_severities', 'all_severities') }}</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                        <option value="MAJOR">MAJOR</option>
+                        <option value="MINOR">MINOR</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="relative">
+                <div class="absolute {{ 'right-4' if lang == 'ar' else 'left-4' }} top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                
+                <div class="space-y-4">
+                    <template x-for="event in filteredEvents()" :key="event.id">
+                        <div class="relative {{ 'pr-8' if lang == 'ar' else 'pl-8' }}">
+                            <div class="absolute {{ 'right-2' if lang == 'ar' else 'left-2' }} w-4 h-4 rounded-full border-2 border-white"
+                                 :class="{
+                                     'bg-red-500': event.role === 'CAUSE',
+                                     'bg-orange-500': event.role === 'SYMPTOM',
+                                     'bg-blue-500': event.role === 'CONTEXT',
+                                     'bg-gray-400': event.role === 'UNKNOWN'
+                                 }"></div>
+                            
+                            <div class="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs px-2 py-0.5 rounded-full"
+                                                  :class="{
+                                                      'bg-red-100 text-red-800': event.severity === 'CRITICAL',
+                                                      'bg-orange-100 text-orange-800': event.severity === 'MAJOR',
+                                                      'bg-yellow-100 text-yellow-800': event.severity === 'MINOR',
+                                                      'bg-gray-100 text-gray-800': event.severity === 'INFO'
+                                                  }"
+                                                  x-text="event.severity"></span>
+                                            <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800" x-text="event.category"></span>
+                                            <span class="text-xs px-2 py-0.5 rounded-full"
+                                                  :class="{
+                                                      'bg-red-100 text-red-800': event.role === 'CAUSE',
+                                                      'bg-orange-100 text-orange-800': event.role === 'SYMPTOM',
+                                                      'bg-blue-100 text-blue-800': event.role === 'CONTEXT'
+                                                  }"
+                                                  x-text="event.role"></span>
+                                        </div>
+                                        <p class="mt-2 text-sm font-medium text-gray-900" x-text="event.summary"></p>
+                                        <p class="text-xs text-gray-500 mt-1" x-text="event.source"></p>
+                                    </div>
+                                    <span class="text-xs text-gray-500 whitespace-nowrap" x-text="formatDate(event.event_time)"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6" x-show="activeTab === 'rca'">
+            <template x-if="incident.rca_status === 'COMPLETED' && incident.rca_summary">
+                <div class="space-y-6">
+                    <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6">
+                        <div class="flex items-center gap-4">
+                            <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
+                                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900">{{ t.get('root_cause_category', 'root_cause_category') }}</h3>
+                                <p class="text-2xl font-bold text-purple-600" x-text="incident.rca_summary.root_cause_category || 'Unknown'"></p>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span class="text-sm text-gray-600">{{ t.get('confidence', 'confidence') }}:</span>
+                                    <div class="w-24 h-2 bg-gray-200 rounded-full">
+                                        <div class="h-2 bg-purple-500 rounded-full" :style="'width: ' + ((incident.rca_summary.confidence || 0) * 100) + '%'"></div>
+                                    </div>
+                                    <span class="text-sm font-medium" x-text="((incident.rca_summary.confidence || 0) * 100).toFixed(0) + '%'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-red-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-red-800">{{ t.get('cause_events', 'cause_events') }}</h4>
+                            <p class="text-3xl font-bold text-red-600" x-text="incident.rca_summary.statistics?.cause_events || 0"></p>
+                        </div>
+                        <div class="bg-orange-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-orange-800">{{ t.get('symptom_events', 'symptom_events') }}</h4>
+                            <p class="text-3xl font-bold text-orange-600" x-text="incident.rca_summary.statistics?.symptom_events || 0"></p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-800">{{ t.get('context_events', 'context_events') }}</h4>
+                            <p class="text-3xl font-bold text-blue-600" x-text="incident.rca_summary.statistics?.context_events || 0"></p>
+                        </div>
+                    </div>
+
+                    <div x-show="incident.rca_summary.contributing_factors?.length > 0">
+                        <h4 class="font-semibold mb-3">{{ t.get('contributing_factors', 'contributing_factors') }}</h4>
+                        <div class="space-y-2">
+                            <template x-for="factor in incident.rca_summary.contributing_factors" :key="factor.event_id">
+                                <div class="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
+                                    <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800" x-text="factor.severity"></span>
+                                    <span class="flex-1 text-sm" x-text="factor.summary"></span>
+                                    <span class="text-xs text-gray-500" x-text="formatDate(factor.time)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <template x-if="incident.rca_status !== 'COMPLETED'">
+                <div class="text-center py-12">
+                    <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                    <h3 class="mt-4 text-lg font-medium text-gray-900">{{ t.get('rca_not_completed', 'rca_not_completed') }}</h3>
+                    <p class="mt-2 text-gray-500">{{ t.get('click_run_rca', 'click_run_rca') }}</p>
+                    <button @click="runRCA()" 
+                            class="mt-4 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700"
+                            :disabled="loading">
+                        {{ t.get('run_rca', 'run_rca') }}
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function incidentDetail(incidentId) {
+    return {
+        incidentId: incidentId,
+        incident: {},
+        loading: false,
+        activeTab: 'summary',
+        timelineFilter: {
+            role: '',
+            severity: ''
+        },
+
+        init() {
+            this.loadIncident();
+        },
+
+        async loadIncident() {
+            this.loading = true;
+            try {
+                const response = await fetch('/api/blackbox/incidents/' + this.incidentId);
+                this.incident = await response.json();
+            } catch (error) {
+                console.error('Error loading incident:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async updateStatus() {
+            try {
+                const response = await fetch('/api/blackbox/incidents/' + this.incidentId, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({status: this.incident.status})
+                });
+                const result = await response.json();
+                if (!result.success) {
+                    alert('Error updating status');
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        },
+
+        async runRCA() {
+            this.loading = true;
+            try {
+                const response = await fetch('/api/blackbox/incidents/' + this.incidentId + '/rca', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadIncident();
+                    this.activeTab = 'rca';
+                }
+            } catch (error) {
+                console.error('Error running RCA:', error);
+                alert('{{ t.get("error_running_rca", "Error running root cause analysis") }}');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        filteredEvents() {
+            let events = this.incident.events || [];
+            if (this.timelineFilter.role) {
+                events = events.filter(e => e.role === this.timelineFilter.role);
+            }
+            if (this.timelineFilter.severity) {
+                events = events.filter(e => e.severity === this.timelineFilter.severity);
+            }
+            return events;
+        },
+
+        calculateDuration() {
+            if (!this.incident.start_time) return '-';
+            const start = new Date(this.incident.start_time);
+            const end = this.incident.end_time ? new Date(this.incident.end_time) : new Date();
+            const diff = Math.abs(end - start);
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) {
+                return hours + 'h ' + minutes + 'm';
+            }
+            return minutes + ' min';
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+    }
+}
+</script>
+{% endblock %}

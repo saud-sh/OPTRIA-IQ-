@@ -42,6 +42,7 @@ OPTRIA IQ is an enterprise-grade Industrial Operations Optimization Platform tar
 │   ├── optimization.py     # Optimization runs
 │   ├── integrations.py     # Integration management
 │   ├── work_orders.py      # Work order management
+│   ├── blackbox.py         # Industrial Black Box endpoints
 │   └── health.py           # Health check & diagnostics
 ├── templates/              # Jinja2 HTML templates
 │   ├── base.html           # Base template
@@ -54,6 +55,7 @@ OPTRIA IQ is an enterprise-grade Industrial Operations Optimization Platform tar
 │   ├── integrations/       # Integration management with 4 tabs
 │   ├── onboarding/         # Setup wizard pages
 │   ├── work_orders/        # Work order pages
+│   ├── blackbox/           # Industrial Black Box pages
 │   └── admin/              # Admin pages
 ├── scripts/                # Utility scripts
 │   └── smoke_test_e2e.py   # E2E CRUD verification tests
@@ -112,7 +114,16 @@ Roles and their capabilities:
 - Signal mapping guidance
 - Cost model configuration
 
-### 8. Bilingual Support
+### 8. Industrial Black Box
+- **Event Collection**: Automatic gathering from alerts, work orders, and AI outputs
+- **Incident Detection**: Rule-based detection with trigger severity thresholds
+- **Event Grouping**: Time-window based grouping of related events (±30 min)
+- **Root Cause Analysis**: Rule-based RCA with pattern matching and confidence scoring
+- **Timeline Replay**: Chronological visualization of incident events
+- **Printable Reports**: PDF-ready incident reports with executive summary
+- **RBAC**: engineer+ can view, optimization_engineer+ can create/update
+
+### 9. Bilingual Support
 - Arabic (default, RTL layout)
 - English (LTR layout)
 
@@ -186,6 +197,19 @@ Roles and their capabilities:
 - `POST /api/work-orders/` - Create work order
 - `PUT /api/work-orders/{id}` - Update work order
 
+### Black Box
+- `GET /api/blackbox/events` - List events
+- `GET /api/blackbox/events/{id}` - Get event details
+- `GET /api/blackbox/incidents` - List incidents
+- `GET /api/blackbox/incidents/{id}` - Get incident with events
+- `PUT /api/blackbox/incidents/{id}` - Update incident
+- `POST /api/blackbox/incidents/{id}/rca` - Run root cause analysis
+- `GET /api/blackbox/stats` - Get Black Box statistics
+- `POST /api/blackbox/engine/collect` - Run event collection
+- `POST /api/blackbox/engine/detect` - Run incident detection
+- `POST /api/blackbox/engine/run` - Run full pipeline
+- `GET /api/blackbox/reports/{incident_id}` - Get printable report
+
 ## Demo Credentials
 
 ### Platform Owner
@@ -244,9 +268,20 @@ Shows system configuration without exposing secrets:
 ✅ **Integration Management**: UI with 4 tabs + global defaults/tenant overrides
 ✅ **Feature Flags**: Demo mode and optimization flags respected
 ✅ **Diagnostics**: Internal config status endpoint for debugging
+✅ **Industrial Black Box**: Event collection, incident detection, and RCA working
 ✅ **Documentation**: OPS_INTEGRATION_VERIFICATION.md with complete guidelines
 
 ## Recent Changes
+
+- 2025-12-05: Industrial Black Box Layer
+  - Added database models (BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent)
+  - Implemented event collection from alerts, work orders, and AI outputs
+  - Built incident detection engine with trigger severity thresholds
+  - Created rule-based RCA engine with pattern matching
+  - Added Black Box API endpoints with RBAC
+  - Built UI templates (incidents list, incident detail, printable report)
+  - Added Black Box navigation in sidebar
+  - Implemented bilingual support (Arabic/English)
 
 - 2025-12-04: FINAL VERIFICATION PHASE
   - Enhanced `config.py` with comprehensive secret management

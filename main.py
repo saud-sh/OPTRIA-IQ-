@@ -15,6 +15,7 @@ from models.tenant import Tenant
 from models.user import User
 from models.asset import Asset, Site, AssetAIScore
 from models.optimization import OptimizationRun, OptimizationRecommendation, WorkOrder
+from models.blackbox import BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent, BlackBoxRCARule
 from core.auth import get_current_user_optional, get_password_hash
 from translations import get_translation, t
 
@@ -25,6 +26,7 @@ from routers.optimization import router as optimization_router
 from routers.integrations import router as integrations_router
 from routers.health import router as health_router
 from routers.work_orders import router as work_orders_router
+from routers.blackbox import router as blackbox_router
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -170,6 +172,7 @@ app.include_router(optimization_router)
 app.include_router(integrations_router)
 app.include_router(health_router)
 app.include_router(work_orders_router)
+app.include_router(blackbox_router)
 
 def get_lang(request: Request) -> str:
     return request.query_params.get("lang", "ar")
@@ -436,6 +439,79 @@ async def admin_tenants_page(
         "rtl": lang == "ar",
         "user": current_user,
         "tenants": tenants
+    })
+
+@app.get("/blackbox/incidents", response_class=HTMLResponse)
+async def blackbox_incidents_page(
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["platform_owner", "tenant_admin", "optimization_engineer", "engineer"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("blackbox/incidents.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user
+    })
+
+@app.get("/blackbox/incidents/{incident_id}", response_class=HTMLResponse)
+async def blackbox_incident_detail_page(
+    incident_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["platform_owner", "tenant_admin", "optimization_engineer", "engineer"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("blackbox/incident_detail.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user,
+        "incident_id": incident_id
+    })
+
+@app.get("/blackbox/incidents/{incident_id}/report", response_class=HTMLResponse)
+async def blackbox_incident_report_page(
+    incident_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["platform_owner", "tenant_admin", "optimization_engineer", "engineer"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("blackbox/report.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user,
+        "incident_id": incident_id
     })
 
 if __name__ == "__main__":

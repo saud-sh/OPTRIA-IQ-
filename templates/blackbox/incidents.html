@@ -1,0 +1,313 @@
+{% extends "app_base.html" %}
+
+{% block title %}{{ t.get('blackbox_incidents', 'blackbox_incidents') }} - OPTRIA IQ{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="incidentsList()">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ t.get('blackbox_incidents', 'blackbox_incidents') }}</h1>
+            <p class="text-gray-600 mt-1">{{ t.get('blackbox_description', 'blackbox_description') }}</p>
+        </div>
+        <div class="flex gap-3">
+            <button @click="runPipeline()" 
+                    class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                    :disabled="loading">
+                <svg class="w-5 h-5" :class="{'animate-spin': loading}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                {{ t.get('run_detection', 'run_detection') }}
+            </button>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('status', 'status') }}</label>
+                <select x-model="filters.status" @change="loadIncidents()" class="w-full rounded-lg border-gray-300">
+                    <option value="">{{ t.get('all', 'all') }}</option>
+                    <option value="OPEN">OPEN</option>
+                    <option value="INVESTIGATING">INVESTIGATING</option>
+                    <option value="RESOLVED">RESOLVED</option>
+                    <option value="CLOSED">CLOSED</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('severity', 'severity') }}</label>
+                <select x-model="filters.severity" @change="loadIncidents()" class="w-full rounded-lg border-gray-300">
+                    <option value="">{{ t.get('all', 'all') }}</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="MAJOR">MAJOR</option>
+                    <option value="MINOR">MINOR</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('incident_type', 'incident_type') }}</label>
+                <select x-model="filters.incident_type" @change="loadIncidents()" class="w-full rounded-lg border-gray-300">
+                    <option value="">{{ t.get('all', 'all') }}</option>
+                    <option value="FAILURE">FAILURE</option>
+                    <option value="NEAR_MISS">NEAR_MISS</option>
+                    <option value="ANOMALY">ANOMALY</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('start_date', 'start_date') }}</label>
+                <input type="date" x-model="filters.start_date" @change="loadIncidents()" class="w-full rounded-lg border-gray-300">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('end_date', 'end_date') }}</label>
+                <input type="date" x-model="filters.end_date" @change="loadIncidents()" class="w-full rounded-lg border-gray-300">
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('total_incidents', 'total_incidents') }}</p>
+                    <p class="text-2xl font-bold text-gray-900" x-text="stats.total_incidents || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('open_incidents', 'open_incidents') }}</p>
+                    <p class="text-2xl font-bold text-orange-600" x-text="stats.open_incidents || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('critical_incidents', 'critical_incidents') }}</p>
+                    <p class="text-2xl font-bold text-red-600" x-text="stats.critical_incidents || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('events_24h', 'events_24h') }}</p>
+                    <p class="text-2xl font-bold text-indigo-600" x-text="stats.events_24h || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('incident_number', 'incident_number') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('title', 'title') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('type', 'type') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('severity', 'severity') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('status', 'status') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('start_time', 'start_time') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('rca_status', 'rca_status') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('actions', 'actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="incident in incidents" :key="incident.id">
+                        <tr class="hover:bg-gray-50 cursor-pointer" @click="viewIncident(incident.id)">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="font-mono text-sm text-indigo-600" x-text="incident.incident_number || incident.id.substring(0,8)"></span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-medium text-gray-900" x-text="incident.title || 'Untitled'"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="{
+                                          'bg-red-100 text-red-800': incident.incident_type === 'FAILURE',
+                                          'bg-yellow-100 text-yellow-800': incident.incident_type === 'NEAR_MISS',
+                                          'bg-blue-100 text-blue-800': incident.incident_type === 'ANOMALY'
+                                      }"
+                                      x-text="incident.incident_type"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="{
+                                          'bg-red-100 text-red-800': incident.severity === 'CRITICAL',
+                                          'bg-orange-100 text-orange-800': incident.severity === 'MAJOR',
+                                          'bg-yellow-100 text-yellow-800': incident.severity === 'MINOR'
+                                      }"
+                                      x-text="incident.severity"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="{
+                                          'bg-red-100 text-red-800': incident.status === 'OPEN',
+                                          'bg-yellow-100 text-yellow-800': incident.status === 'INVESTIGATING',
+                                          'bg-green-100 text-green-800': incident.status === 'RESOLVED',
+                                          'bg-gray-100 text-gray-800': incident.status === 'CLOSED'
+                                      }"
+                                      x-text="incident.status"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(incident.start_time)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800': incident.rca_status === 'COMPLETED',
+                                          'bg-yellow-100 text-yellow-800': incident.rca_status === 'PENDING',
+                                          'bg-blue-100 text-blue-800': incident.rca_status === 'IN_PROGRESS'
+                                      }"
+                                      x-text="incident.rca_status || 'PENDING'"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm" @click.stop>
+                                <button @click="viewIncident(incident.id)" class="text-indigo-600 hover:text-indigo-900 mx-1">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="incidents.length === 0 && !loading">
+                        <td colspan="8" class="px-6 py-12 text-center text-gray-500">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <p class="mt-2">{{ t.get('no_incidents', 'no_incidents') }}</p>
+                            <p class="text-sm">{{ t.get('run_detection_hint', 'run_detection_hint') }}</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="px-6 py-4 border-t border-gray-200 flex justify-between items-center" x-show="total > 0">
+            <div class="text-sm text-gray-600">
+                {{ t.get('showing', 'showing') }} <span x-text="offset + 1"></span>-<span x-text="Math.min(offset + limit, total)"></span> {{ t.get('of', 'of') }} <span x-text="total"></span>
+            </div>
+            <div class="flex gap-2">
+                <button @click="prevPage()" :disabled="offset === 0" class="px-3 py-1 border rounded disabled:opacity-50">{{ t.get('previous', 'previous') }}</button>
+                <button @click="nextPage()" :disabled="offset + limit >= total" class="px-3 py-1 border rounded disabled:opacity-50">{{ t.get('next', 'next') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function incidentsList() {
+    return {
+        incidents: [],
+        stats: {},
+        loading: false,
+        total: 0,
+        limit: 20,
+        offset: 0,
+        filters: {
+            status: '',
+            severity: '',
+            incident_type: '',
+            start_date: '',
+            end_date: ''
+        },
+
+        init() {
+            this.loadIncidents();
+            this.loadStats();
+        },
+
+        async loadIncidents() {
+            this.loading = true;
+            try {
+                let url = '/api/blackbox/incidents?limit=' + this.limit + '&offset=' + this.offset;
+                if (this.filters.status) url += '&status=' + this.filters.status;
+                if (this.filters.severity) url += '&severity=' + this.filters.severity;
+                if (this.filters.incident_type) url += '&incident_type=' + this.filters.incident_type;
+                if (this.filters.start_date) url += '&start_date=' + this.filters.start_date;
+                if (this.filters.end_date) url += '&end_date=' + this.filters.end_date;
+
+                const response = await fetch(url);
+                const data = await response.json();
+                this.incidents = data.incidents || [];
+                this.total = data.total || 0;
+            } catch (error) {
+                console.error('Error loading incidents:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loadStats() {
+            try {
+                const response = await fetch('/api/blackbox/stats');
+                this.stats = await response.json();
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        },
+
+        async runPipeline() {
+            this.loading = true;
+            try {
+                const response = await fetch('/api/blackbox/engine/run', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadIncidents();
+                    await this.loadStats();
+                    alert('{{ t.get("pipeline_completed", "Pipeline completed successfully") }}');
+                }
+            } catch (error) {
+                console.error('Error running pipeline:', error);
+                alert('{{ t.get("error_running_pipeline", "Error running pipeline") }}');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        viewIncident(id) {
+            window.location.href = '/blackbox/incidents/' + id + '?lang={{ lang }}';
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        },
+
+        prevPage() {
+            if (this.offset > 0) {
+                this.offset -= this.limit;
+                this.loadIncidents();
+            }
+        },
+
+        nextPage() {
+            if (this.offset + this.limit < this.total) {
+                this.offset += this.limit;
+                this.loadIncidents();
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

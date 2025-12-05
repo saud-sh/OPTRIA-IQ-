@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.get('blackbox_report', 'Black Box Report') }} - OPTRIA IQ{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-white" x-data="incidentReport('{{ incident_id }}')">
+    <div class="max-w-4xl mx-auto py-8 px-6">
+        <div class="flex justify-between items-center mb-8 print:hidden">
+            <a href="/blackbox/incidents/{{ incident_id }}?lang={{ lang }}" class="text-indigo-600 hover:text-indigo-800 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M{{ 'M9 5l7 7-7 7' if lang == 'ar' else 'M15 19l-7-7 7-7' }}"/>
+                </svg>
+                {{ t.get('back', 'Back') }}
+            </a>
+            <button onclick="window.print()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                </svg>
+                {{ t.get('print_report', 'Print Report') }}
+            </button>
+        </div>
+
+        <div class="border-2 border-gray-900 p-8">
+            <div class="text-center border-b-2 border-gray-900 pb-6 mb-6">
+                <h1 class="text-3xl font-bold text-gray-900">OPTRIA IQ</h1>
+                <h2 class="text-xl font-semibold text-gray-700 mt-2">{{ t.get('blackbox_report', 'Industrial Black Box Incident Report') }}</h2>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 border-b border-gray-300 pb-6 mb-6">
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('incident_number', 'Incident #') }}</p>
+                    <p class="font-bold text-lg" x-text="report.header?.incident_number || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('severity', 'Severity') }}</p>
+                    <p class="font-bold text-lg" :class="{
+                        'text-red-600': report.header?.severity === 'CRITICAL',
+                        'text-orange-600': report.header?.severity === 'MAJOR',
+                        'text-yellow-600': report.header?.severity === 'MINOR'
+                    }" x-text="report.header?.severity || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('tenant', 'Organization') }}</p>
+                    <p class="font-semibold" x-text="report.header?.tenant_name || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('status', 'Status') }}</p>
+                    <p class="font-semibold" x-text="report.header?.status || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('site', 'Site') }}</p>
+                    <p class="font-semibold" x-text="report.header?.site_name || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('root_asset', 'Asset') }}</p>
+                    <p class="font-semibold" x-text="report.header?.asset_name || '-'"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('start_time', 'Start Time') }}</p>
+                    <p class="font-semibold" x-text="formatDate(report.header?.start_time)"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">{{ t.get('end_time', 'End Time') }}</p>
+                    <p class="font-semibold" x-text="formatDate(report.header?.end_time) || 'Ongoing'"></p>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-900 pb-2 mb-4">
+                    {{ t.get('executive_summary', 'Executive Summary') }}
+                </h3>
+                <div class="bg-gray-50 p-4 rounded">
+                    <p class="font-semibold text-lg" x-text="report.executive_summary?.title || 'No title'"></p>
+                    <p class="mt-2 text-gray-700" x-text="report.executive_summary?.description || 'No description provided.'"></p>
+                    
+                    <div class="grid grid-cols-3 gap-4 mt-4">
+                        <div class="bg-white p-3 rounded border">
+                            <p class="text-sm text-gray-600">{{ t.get('root_cause_category', 'Root Cause') }}</p>
+                            <p class="font-bold text-purple-600" x-text="report.executive_summary?.root_cause_category || 'PENDING'"></p>
+                        </div>
+                        <div class="bg-white p-3 rounded border">
+                            <p class="text-sm text-gray-600">{{ t.get('confidence', 'Confidence') }}</p>
+                            <p class="font-bold" x-text="((report.executive_summary?.confidence || 0) * 100).toFixed(0) + '%'"></p>
+                        </div>
+                        <div class="bg-white p-3 rounded border">
+                            <p class="text-sm text-gray-600">{{ t.get('event_count', 'Total Events') }}</p>
+                            <p class="font-bold" x-text="report.executive_summary?.total_events || 0"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-900 pb-2 mb-4">
+                    {{ t.get('timeline_overview', 'Timeline Overview') }}
+                </h3>
+                <div class="space-y-2">
+                    <template x-for="event in (report.timeline_overview || []).slice(0, 10)" :key="event.time">
+                        <div class="flex items-start gap-4 py-2 border-b border-gray-200">
+                            <div class="w-32 text-sm text-gray-500" x-text="formatTime(event.time)"></div>
+                            <div class="flex-1">
+                                <span class="text-xs px-2 py-0.5 rounded-full mr-2"
+                                      :class="{
+                                          'bg-red-100 text-red-800': event.severity === 'CRITICAL',
+                                          'bg-orange-100 text-orange-800': event.severity === 'MAJOR',
+                                          'bg-yellow-100 text-yellow-800': event.severity === 'MINOR'
+                                      }"
+                                      x-text="event.severity"></span>
+                                <span class="text-xs px-2 py-0.5 rounded-full mr-2"
+                                      :class="{
+                                          'bg-red-100 text-red-800': event.role === 'CAUSE',
+                                          'bg-orange-100 text-orange-800': event.role === 'SYMPTOM',
+                                          'bg-blue-100 text-blue-800': event.role === 'CONTEXT'
+                                      }"
+                                      x-text="event.role"></span>
+                                <span class="text-sm" x-text="event.summary"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="mb-8" x-show="report.rca_section && report.rca_section.status !== 'PENDING'">
+                <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-900 pb-2 mb-4">
+                    {{ t.get('rca_section', 'Root Cause Analysis') }}
+                </h3>
+                <div class="bg-purple-50 p-4 rounded mb-4">
+                    <p class="text-sm text-gray-600">{{ t.get('root_cause_category', 'Root Cause Category') }}</p>
+                    <p class="text-xl font-bold text-purple-700" x-text="report.rca_section?.root_cause_category || '-'"></p>
+                </div>
+                
+                <div x-show="report.rca_section?.contributing_factors?.length > 0">
+                    <h4 class="font-semibold mb-2">{{ t.get('contributing_factors', 'Contributing Factors') }}</h4>
+                    <ul class="list-disc list-inside space-y-1">
+                        <template x-for="factor in (report.rca_section?.contributing_factors || [])" :key="factor.event_id">
+                            <li class="text-sm" x-text="factor.summary"></li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-900 pb-2 mb-4">
+                    {{ t.get('impact_section', 'Impact Assessment') }}
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-50 p-4 rounded">
+                        <p class="text-sm text-gray-600">{{ t.get('affected_assets', 'Affected Assets') }}</p>
+                        <p class="text-2xl font-bold" x-text="report.impact_section?.affected_assets || 0"></p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded">
+                        <p class="text-sm text-gray-600">{{ t.get('impact_scope', 'Impact Scope') }}</p>
+                        <p class="text-sm" x-text="JSON.stringify(report.impact_section?.scope || {})"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-900 pb-2 mb-4">
+                    {{ t.get('recommendations', 'Recommendations') }}
+                </h3>
+                <div class="space-y-3">
+                    <template x-for="rec in (report.recommendations || [])" :key="rec.title">
+                        <div class="border-l-4 pl-4 py-2"
+                             :class="{
+                                 'border-red-500': rec.priority === 'HIGH',
+                                 'border-yellow-500': rec.priority === 'MEDIUM',
+                                 'border-blue-500': rec.priority === 'LOW'
+                             }">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs px-2 py-0.5 rounded-full"
+                                      :class="{
+                                          'bg-red-100 text-red-800': rec.priority === 'HIGH',
+                                          'bg-yellow-100 text-yellow-800': rec.priority === 'MEDIUM',
+                                          'bg-blue-100 text-blue-800': rec.priority === 'LOW'
+                                      }"
+                                      x-text="rec.priority"></span>
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800" x-text="rec.category"></span>
+                            </div>
+                            <p class="font-semibold mt-1" x-text="rec.title"></p>
+                            <p class="text-sm text-gray-600" x-text="rec.description"></p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="border-t-2 border-gray-900 pt-4 text-center text-sm text-gray-500">
+                <p>{{ t.get('generated_at', 'Generated At') }}: <span x-text="formatDate(report.generated_at)"></span></p>
+                <p>{{ t.get('generated_by', 'Generated By') }}: <span x-text="report.generated_by || '-'"></span></p>
+                <p class="mt-2 font-semibold">OPTRIA IQ - Industrial Operations Optimization Platform</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script>
+function incidentReport(incidentId) {
+    return {
+        incidentId: incidentId,
+        report: {},
+        loading: true,
+
+        init() {
+            this.loadReport();
+        },
+
+        async loadReport() {
+            try {
+                const response = await fetch('/api/blackbox/reports/' + this.incidentId);
+                this.report = await response.json();
+            } catch (error) {
+                console.error('Error loading report:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        },
+
+        formatTime(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        }
+    }
+}
+</script>
+
+<style>
+@media print {
+    .print\\:hidden {
+        display: none !important;
+    }
+    body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
+</style>
+{% endblock %}
