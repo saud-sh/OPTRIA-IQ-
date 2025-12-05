@@ -1,0 +1,367 @@
+You are the Replit multi-agent team (Architect + Backend + Frontend + Security + Testing) working on the OPTRIA IQ platform.
+
+IMPORTANT CONSTRAINTS (DO NOT VIOLATE):
+- Keep the existing stack EXACTLY as is:
+  - Backend: Python 3.11 + FastAPI
+  - Frontend: Jinja2 templates + Tailwind (CDN) + Alpine.js
+  - Database: PostgreSQL (Neon) via SQLAlchemy
+- NO destructive database changes:
+  - NO DROP TABLE
+  - NO DROP COLUMN
+  - NO ALTER TABLE that removes or renames existing columns
+  - ONLY additive migrations (new tables / new columns that are backward compatible)
+- Multi-tenant safety is mandatory:
+  - tenant_id is required on ALL new business tables
+  - All queries must be tenant-scoped
+- RBAC must stay intact:
+  - Reuse existing roles: platform_owner, tenant_admin, optimization_engineer, engineer, viewer
+  - Protect all new routes with the existing RBAC patterns
+- DO NOT rewrite or migrate to Node/React/Next.js.
+- DO NOT break existing APIs, UI routes, or optimization engine behavior.
+- This work must be layered ON TOP of the current OPTRIA IQ system.
+
+========================================
+HIGH-LEVEL GOAL
+========================================
+
+Extend the current OPTRIA IQ "Industrial Operations Optimization Platform" by adding a new major capability:
+
+👉 An **Industrial Black Box Layer** for factories and plants  
+(similar in spirit to an aircraft flight recorder, but for industrial operations).
+
+This Black Box layer must:
+
+- Continuously record and normalize operational events from multiple OT + IT sources:
+  - Sensors / tags / historian events
+  - Alerts / alarms
+  - Work orders / maintenance events
+  - Operator actions
+  - Configuration / model changes
+- Build a unified event timeline around incidents (failures / near misses / anomalies).
+- Provide **Incident Reconstruction** and **Timeline Replay**.
+- Perform **Root Cause Analysis (RCA)** using rules (initially), with a clear path to ML later.
+- Produce a unified **Industrial Black Box Incident Report** per major incident.
+- Work in IT space, read-only with respect to OT/SCADA (NO control commands).
+
+The Black Box must be:
+- Non-intrusive (read-only from OT/SCADA, PI, OPC-UA, SAP, SQL, etc.)
+- Tenant-aware (tenant_id on all new tables and queries)
+- Additive (no breaking existing schema or routes)
+- Modular (clean module, not tightly coupled spaghetti)
+- Auditable (transformations are traceable end-to-end)
+
+========================================
+CURRENT OPTRIA IQ (ASSUME EXISTING)
+========================================
+
+Assume the current codebase already contains and MUST KEEP:
+
+- Auth & Multi-Tenancy:
+  - Users, tenants, roles, tenant-scoped data
+- Asset Model:
+  - Tenants, Sites, Assets, Asset types, basic hierarchy
+- Data Ingestion & Integrations:
+  - Connectors: Demo, OPC-UA, PI, SAP, SQL (even if some are stubs)
+  - Integration management UI with 4 tabs
+- AI Engine:
+  - Health scores, failure probability, RUL estimation, anomaly flags
+- Optimization:
+  - 4 optimization models (maintenance, deferral, production risk, workforce)
+- Alerts & Work Orders:
+  - Threshold & AI-based alerts
+  - Basic work order management
+- Dashboards:
+  - Role-based dashboards (owner, tenant admin, engineer, viewer)
+- Onboarding wizard & bilingual support (AR/EN)
+- Integration diagnostics & health endpoints
+- Secrets/feature flags: DEMO_MODE, OPTIMIZATION_ENGINE_ENABLED, EXTERNAL_DB_ENABLE, etc.
+
+Your work MUST extend this safely.
+
+========================================
+PART 1 – DESIGN & BLUEPRINT (NO CODE YET)
+========================================
+
+First, as the Architect Agent, produce and SHOW me (in the chat) a clear blueprint before you start coding:
+
+1) **Event Model (Black Box Event Schema)**
+   - New canonical event table, e.g. `blackbox_events` (or similar)
+   - Core fields (minimum):
+     - id (UUID)
+     - tenant_id
+     - asset_id (nullable but recommended)
+     - source_system (e.g. "PI", "SCADA", "CMMS", "ERP", "OPTRIA_ALERT", "OPTRIA_WORKORDER", "AI_ENGINE")
+     - source_type (e.g. "TAG_READING", "ALERT", "ALARM", "WORK_ORDER", "OPERATOR_ACTION", "SYSTEM_EVENT", "CONFIG_CHANGE")
+     - source_id (ID in source system: tag name, alert_id, work_order_id, etc.)
+     - event_time (UTC, high precision if possible)
+     - ingest_time (UTC, when entered the Black Box pipeline)
+     - severity (enum or string: INFO, WARNING, MINOR, MAJOR, CRITICAL; optional)
+     - event_category (SENSOR, ALERT, FAILURE, MAINTENANCE, OPERATOR_ACTION, CONFIG_CHANGE, SYSTEM)
+     - summary (short human-readable description)
+     - payload (JSONB with structured details)
+   - Optional fields:
+     - site_id / unit_id / line_id or process_context
+     - shift_id
+     - batch_id / lot_id
+     - operator_id
+     - tags (array of strings for fast filtering)
+
+2) **Incident Model**
+   - New tables, e.g.:
+     - `blackbox_incidents`
+     - `blackbox_incident_events` (many-to-many between incidents and events)
+   - Fields for `blackbox_incidents`:
+     - id (UUID)
+     - tenant_id
+     - incident_type (FAILURE, NEAR_MISS, ANOMALOUS_BEHAVIOR)
+     - status (OPEN, INVESTIGATING, RESOLVED, CLOSED)
+     - severity (MINOR, MAJOR, CRITICAL, CATASTROPHIC)
+     - root_asset_id
+     - impact_scope (JSONB: assets/units/sites affected)
+     - start_time
+     - end_time (nullable for ongoing incidents)
+     - trigger_event_id
+     - rca_summary (JSONB or text: root cause category, contributing factors, confidence)
+     - impact_estimate (JSONB: cost, downtime, production loss)
+     - created_at, updated_at
+   - Fields for `blackbox_incident_events`:
+     - id
+     - tenant_id
+     - incident_id
+     - event_id
+     - role (CAUSE, SYMPTOM, CONTEXT, NOISE, UNKNOWN)
+
+3) **Event Pipeline & Incident Engine**
+   - High-level design:
+     - Event collectors from existing OPTRIA data:
+       - Alerts table
+       - Work orders table
+       - AI outputs (health, anomaly, failure probability)
+       - Integration connectors (PI, OPC-UA, SAP, SQL) via existing integration layer
+     - Normalization layer:
+       - Map source records into canonical Event schema
+       - Normalize timestamps to UTC
+       - Enrich with asset/site context if possible
+     - Event store:
+       - Insert into blackbox_events
+       - Index by tenant_id, asset_id, event_time, event_category, severity
+     - Incident Engine:
+       - Trigger incidents based on:
+         - Critical alerts (from AI / alerts service)
+         - Failure-type events (trip, shutdown, etc.)
+       - Define “incident window” (configurable per tenant/asset class):
+         - e.g. [T - 30 minutes, T + 30 minutes]
+       - Group events into incidents using:
+         - Time window
+         - Asset hierarchy (same asset / upstream / downstream)
+         - Event category
+     - RCA Engine (rule-based initially):
+       - Simple JSON-defined rules for patterns such as:
+         - “Pressure spike” → “Temperature rise” → “Pump trip” within X minutes
+         - Operator setpoint change → immediate alarm → trip
+         - Failure soon after maintenance
+       - Annotate incident events with roles (CAUSE, SYMPTOM, CONTEXT)
+       - Produce rca_summary object.
+
+4) **Timeline Replay & Digital Twin Integration**
+   - API endpoints to:
+     - Fetch event timeline for a given incident id and time window.
+     - Return ordered events by time, grouped by asset and category.
+   - UI approach:
+     - Timeline view (ladder/rail style): sensors, alerts, actions on parallel lanes.
+     - Integration with existing Digital Twin:
+       - For a given time cursor, show asset states and highlight affected assets.
+     - Controls for:
+       - Play, pause, seek, filter events.
+
+5) **Black Box Incident Report**
+   - Unified report definition:
+     - Header (tenant, site, asset, times, severity, type)
+     - Executive Summary
+     - Timeline Overview (high-level)
+     - RCA section
+     - Impact section
+     - Recommendations
+   - Provide both:
+     - JSON API
+     - HTML printable page (later PDF export if possible)
+
+6) **Security & RBAC**
+   - Black Box APIs must:
+     - Be tenant-scoped
+     - Respect existing roles:
+       - reliability/optimization_engineer, tenant_admin: full details
+       - engineer: operational view
+       - viewer/management: summary view
+   - Ensure no sensitive OT details are exposed to unauthorized roles.
+
+Once you have this blueprint, present it clearly and WAIT FOR CONFIRMATION before you start changing the code.
+
+========================================
+PART 2 – IMPLEMENTATION (BACKEND + DB)
+========================================
+
+After the blueprint is agreed:
+
+1) Database Models (SQLAlchemy)
+   - Implement new models:
+     - BlackBoxEvent
+     - BlackBoxIncident
+     - BlackBoxIncidentEvent
+   - Ensure:
+     - All have tenant_id
+     - Safe indexes (tenant_id + event_time, etc.)
+     - No destructive changes to existing models
+   - Implement migration in a way that is ADDITIVE ONLY.
+
+2) Event Collectors (from existing OPTRIA tables)
+   - Implement services to:
+     - Periodically scan:
+       - Alerts table
+       - Work orders
+       - AI outputs
+       - Possibly integration/historian events (if available)
+     - Map them into BlackBoxEvent records with consistent taxonomy.
+   - For now, it is acceptable to:
+     - Start with OPTRIA internal events (alerts + work orders + AI)
+     - Then add OT/historian events as second step.
+
+3) Incident Engine
+   - Implement a service/class that:
+     - Watches for trigger events (critical alerts, failure flags)
+     - Builds or updates an incident based on event windows and asset relationships
+     - Links events into incident via BlackBoxIncidentEvent
+   - Provide functions to:
+     - create_incident_from_event(...)
+     - update_incident_with_new_events(...)
+     - recompute_incident_window(...)
+
+4) RCA Engine (rule-based)
+   - Create a simple rule engine structure:
+     - Rules defined as JSON/DSL stored in DB or code.
+     - Evaluate over ordered events for an incident.
+     - Output:
+       - root_cause_category
+       - contributing_factors
+       - confidence
+   - Populate:
+     - incident.rca_summary
+     - roles in BlackBoxIncidentEvent.
+
+5) APIs (FastAPI routers)
+   - New router, e.g. `routers/blackbox.py` with:
+     - GET /api/blackbox/events
+       - Query events by tenant, asset, time, category, severity
+     - GET /api/blackbox/incidents
+       - List incidents (with filters)
+     - GET /api/blackbox/incidents/{id}
+       - Full details (incident + RCA + summary)
+     - GET /api/blackbox/incidents/{id}/timeline
+       - Timeline data for replay
+     - GET /api/blackbox/reports/{id}
+       - JSON representation of Black Box report
+   - All endpoints:
+     - Must reuse existing auth + RBAC dependencies
+     - Must filter by tenant_id
+     - Must avoid leaking cross-tenant data.
+
+========================================
+PART 3 – FRONTEND (JINJA2 UI)
+========================================
+
+Extend the existing UI using Jinja2 + Alpine.js + Tailwind:
+
+1) Black Box Incident List Page
+   - URL suggestion: `/blackbox/incidents`
+   - Shows:
+     - Incident ID
+     - Type
+     - Severity
+     - Root asset
+     - Start/end time
+     - Status
+   - Filters:
+     - Severity
+     - Status
+     - Site / asset
+     - Time range
+
+2) Incident Detail + Timeline Replay Page
+   - URL suggestion: `/blackbox/incidents/{id}`
+   - Tabs or sections:
+     - Summary (executive summary + RCA)
+     - Timeline (event ladder + filters)
+     - Digital Twin view (if integrated)
+     - Report (formatted view for printing)
+   - Use:
+     - Alpine.js for simple interactivity (play/pause timeline, filters)
+     - Existing base layout (app_base.html)
+   - Make sure:
+     - Layout supports both Arabic (RTL) and English (LTR) using the existing translation mechanism.
+
+3) Navigation Integration
+   - Add Black Box section in the sidebar for:
+     - tenant_admin
+     - optimization_engineer
+     - engineer (read-only)
+     - platform_owner
+   - Ensure links respect RBAC.
+
+========================================
+PART 4 – TESTING & DIAGNOSTICS
+========================================
+
+1) Smoke Tests
+   - Extend `scripts/smoke_test_e2e.py` or create a new script:
+     - Create sample events
+     - Create a sample incident
+     - Run the incident engine
+     - Run RCA engine on that incident
+     - Verify:
+       - Events stored with tenant_id
+       - Incident created with correct window
+       - RCA summary populated
+       - API endpoints return expected JSON.
+
+2) Health & Diagnostics
+   - Add minimal health info for the Black Box layer to existing /health or a new diagnostics endpoint:
+     - Indicate if:
+       - BlackBoxEvent table reachable
+       - Incident engine can query events
+       - At least one test incident exists (in demo mode).
+
+========================================
+PART 5 – NON-FUNCTIONAL REQUIREMENTS
+========================================
+
+- Do NOT degrade performance of existing flows.
+- Use background jobs / scheduled tasks for computationally heavy parts (event ingestion, incident reconstruction).
+- All new logic should be feature-flag safe:
+  - e.g. BLACKBOX_ENABLED = true/false (add to config and respect it).
+- Respect existing DEMO_MODE behavior:
+  - In DEMO_MODE: it is OK to generate synthetic events/incidents for demo tenants.
+
+========================================
+FINAL NOTE
+========================================
+
+Before modifying any files:
+- Show me the architecture and data model plan in the chat.
+- Confirm:
+  - New tables
+  - New routers
+  - New templates
+  - Any new config keys / feature flags
+
+Then implement in small, safe steps:
+- Models + migrations
+- Services (event collectors, incident engine, RCA engine)
+- Routers/APIs
+- UI templates
+- Tests and diagnostics
+
+Always keep the system:
+- Multi-tenant safe
+- RBAC-enforced
+- Additive-only on the DB
+- Compatible with the existing OPTRIA IQ stack and behavior.
