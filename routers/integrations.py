@@ -185,17 +185,25 @@ async def get_active_cost_model_early(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.tenant_id:
+    tenant_id = current_user.tenant_id
+    if not tenant_id:
         raise HTTPException(status_code=400, detail="Tenant context required")
     
     model = db.query(TenantCostModel).filter(
-        TenantCostModel.tenant_id == current_user.tenant_id,
+        TenantCostModel.tenant_id == tenant_id,
         TenantCostModel.is_active == True
     ).first()
     
-    if model:
-        return model.to_dict()
-    return None
+    if not model:
+        model = TenantCostModel(
+            tenant_id=tenant_id,
+            name="Default Cost Model",
+            is_active=True
+        )
+        db.add(model)
+        db.commit()
+    
+    return model.to_dict()
 
 @router.get("/onboarding/progress")
 async def get_onboarding_progress_early(
@@ -626,29 +634,6 @@ async def get_integration_action_logs(
     
     return [log.to_dict() for log in logs]
 
-@router.get("/mappings")
-async def list_signal_mappings(
-    integration_id: Optional[int] = None,
-    asset_id: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if not has_capability(current_user, "manage_integrations"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    query = db.query(ExternalSignalMapping).filter(ExternalSignalMapping.is_active == True)
-    
-    if current_user.role != "platform_owner":
-        query = query.filter(ExternalSignalMapping.tenant_id == current_user.tenant_id)
-    
-    if integration_id:
-        query = query.filter(ExternalSignalMapping.integration_id == integration_id)
-    if asset_id:
-        query = query.filter(ExternalSignalMapping.asset_id == asset_id)
-    
-    mappings = query.all()
-    return [m.to_dict() for m in mappings]
-
 @router.post("/mappings")
 async def create_signal_mapping(
     mapping_data: SignalMappingCreate,
@@ -805,22 +790,6 @@ async def list_sso_provider_types(
             "fields": schema.get("fields", [])
         })
     return providers
-
-@router.get("/identity-providers")
-async def list_identity_providers(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if not has_capability(current_user, "manage_integrations"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    query = db.query(TenantIdentityProvider)
-    
-    if current_user.role != "platform_owner":
-        query = query.filter(TenantIdentityProvider.tenant_id == current_user.tenant_id)
-    
-    providers = query.all()
-    return [p.to_dict() for p in providers]
 
 @router.post("/identity-providers")
 async def create_identity_provider(
@@ -988,34 +957,6 @@ async def list_cost_models(
     models = query.all()
     return [m.to_dict() for m in models]
 
-@router.get("/cost-models/active")
-async def get_active_cost_model(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if not has_capability(current_user, "view_optimization"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    tenant_id = current_user.tenant_id
-    if not tenant_id:
-        raise HTTPException(status_code=400, detail="Tenant ID required")
-    
-    model = db.query(TenantCostModel).filter(
-        TenantCostModel.tenant_id == tenant_id,
-        TenantCostModel.is_active == True
-    ).first()
-    
-    if not model:
-        model = TenantCostModel(
-            tenant_id=tenant_id,
-            name="Default Cost Model",
-            is_active=True
-        )
-        db.add(model)
-        db.commit()
-    
-    return model.to_dict()
-
 @router.post("/cost-models")
 async def create_cost_model(
     model_data: CostModelCreate,
@@ -1090,64 +1031,6 @@ async def update_cost_model(
     db.commit()
     
     return {"success": True, "cost_model": model.to_dict()}
-
-@router.get("/onboarding/progress")
-async def get_onboarding_progress(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.role not in ["tenant_admin", "platform_owner"]:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    tenant_id = current_user.tenant_id
-    if not tenant_id:
-        raise HTTPException(status_code=400, detail="Tenant ID required")
-    
-    progress = db.query(TenantOnboardingProgress).filter(
-        TenantOnboardingProgress.tenant_id == tenant_id
-    ).first()
-    
-    if not progress:
-        progress = TenantOnboardingProgress(tenant_id=tenant_id)
-        db.add(progress)
-        db.commit()
-    
-    integrations_count = db.query(TenantIntegration).filter(
-        TenantIntegration.tenant_id == tenant_id,
-        TenantIntegration.is_active == True
-    ).count()
-    
-    active_integrations = db.query(TenantIntegration).filter(
-        TenantIntegration.tenant_id == tenant_id,
-        TenantIntegration.status == "active"
-    ).count()
-    
-    mappings_count = db.query(ExternalSignalMapping).filter(
-        ExternalSignalMapping.tenant_id == tenant_id,
-        ExternalSignalMapping.is_active == True
-    ).count()
-    
-    cost_model = db.query(TenantCostModel).filter(
-        TenantCostModel.tenant_id == tenant_id,
-        TenantCostModel.is_active == True
-    ).first()
-    
-    from models.optimization import OptimizationRun
-    optimization_run = db.query(OptimizationRun).filter(
-        OptimizationRun.tenant_id == tenant_id,
-        OptimizationRun.status == "completed"
-    ).first()
-    
-    result = progress.to_dict()
-    result["computed_status"] = {
-        "has_integrations": integrations_count > 0,
-        "has_active_integrations": active_integrations > 0,
-        "has_mappings": mappings_count > 0,
-        "has_cost_model": cost_model is not None,
-        "has_optimization_run": optimization_run is not None
-    }
-    
-    return result
 
 @router.put("/onboarding/progress")
 async def update_onboarding_progress(
