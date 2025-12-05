@@ -1,4 +1,4 @@
-modules = ["python-3.11"]
+modules = ["python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
 integrations = ["python_database:1.0.0", "python_log_in_with_replit:1.0.0"]
@@ -36,8 +36,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 35719
+localPort = 36323
 externalPort = 3000
+
+[[ports]]
+localPort = 38211
+externalPort = 3001
 
 [deployment]
 deploymentTarget = "autoscale"

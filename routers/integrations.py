@@ -141,6 +141,125 @@ async def list_integrations(
     integrations = query.all()
     return [i.to_dict() for i in integrations]
 
+@router.get("/mappings")
+async def list_signal_mappings_early(
+    integration_id: Optional[int] = None,
+    asset_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not has_capability(current_user, "manage_integrations"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    query = db.query(ExternalSignalMapping).filter(ExternalSignalMapping.is_active == True)
+    
+    if current_user.role != "platform_owner":
+        query = query.filter(ExternalSignalMapping.tenant_id == current_user.tenant_id)
+    
+    if integration_id:
+        query = query.filter(ExternalSignalMapping.integration_id == integration_id)
+    if asset_id:
+        query = query.filter(ExternalSignalMapping.asset_id == asset_id)
+    
+    mappings = query.all()
+    return [m.to_dict() for m in mappings]
+
+@router.get("/identity-providers")
+async def list_identity_providers_early(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not has_capability(current_user, "manage_integrations"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    query = db.query(TenantIdentityProvider)
+    
+    if current_user.role != "platform_owner":
+        query = query.filter(TenantIdentityProvider.tenant_id == current_user.tenant_id)
+    
+    providers = query.all()
+    return [p.to_dict() for p in providers]
+
+@router.get("/cost-models/active")
+async def get_active_cost_model_early(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=400, detail="Tenant context required")
+    
+    model = db.query(TenantCostModel).filter(
+        TenantCostModel.tenant_id == current_user.tenant_id,
+        TenantCostModel.is_active == True
+    ).first()
+    
+    if model:
+        return model.to_dict()
+    return None
+
+@router.get("/onboarding/progress")
+async def get_onboarding_progress_early(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not has_capability(current_user, "manage_integrations"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = current_user.tenant_id
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="Tenant context required")
+    
+    progress = db.query(TenantOnboardingProgress).filter(
+        TenantOnboardingProgress.tenant_id == tenant_id
+    ).first()
+    
+    if not progress:
+        progress = TenantOnboardingProgress(tenant_id=tenant_id)
+        db.add(progress)
+        db.commit()
+        db.refresh(progress)
+    
+    has_integrations = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant_id,
+        TenantIntegration.is_active == True
+    ).first() is not None
+    
+    has_mappings = db.query(ExternalSignalMapping).filter(
+        ExternalSignalMapping.tenant_id == tenant_id,
+        ExternalSignalMapping.is_active == True
+    ).first() is not None
+    
+    has_cost_model = db.query(TenantCostModel).filter(
+        TenantCostModel.tenant_id == tenant_id,
+        TenantCostModel.is_active == True
+    ).first() is not None
+    
+    has_sso = db.query(TenantIdentityProvider).filter(
+        TenantIdentityProvider.tenant_id == tenant_id,
+        TenantIdentityProvider.is_active == True
+    ).first() is not None
+    
+    steps = progress.steps or {}
+    result = progress.to_dict()
+    result["computed_status"] = {
+        "has_integrations": has_integrations,
+        "has_mappings": has_mappings,
+        "has_cost_model": has_cost_model,
+        "has_sso": has_sso
+    }
+    
+    completed_steps = sum([
+        steps.get("tenant_profile", {}).get("status") == "completed",
+        has_integrations,
+        has_mappings,
+        has_cost_model,
+        has_sso or steps.get("configure_sso", {}).get("status") == "skipped",
+        steps.get("invite_team", {}).get("status") in ["completed", "skipped"]
+    ])
+    result["progress_percent"] = int((completed_steps / 6) * 100)
+    
+    return result
+
 @router.get("/{integration_id}")
 async def get_integration(
     integration_id: int,
