@@ -15,7 +15,7 @@ from models.tenant import Tenant
 from models.user import User
 from models.asset import Asset, Site, AssetAIScore
 from models.optimization import OptimizationRun, OptimizationRecommendation, WorkOrder
-from models.blackbox import BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent, BlackBoxRCARule
+from models.blackbox import BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent, BlackBoxRCARule, TwinLayout, TwinNode
 from core.auth import get_current_user_optional, get_password_hash
 from translations import get_translation, t
 
@@ -27,6 +27,7 @@ from routers.integrations import router as integrations_router
 from routers.health import router as health_router
 from routers.work_orders import router as work_orders_router
 from routers.blackbox import router as blackbox_router
+from routers.twin import router as twin_router
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -173,6 +174,7 @@ app.include_router(integrations_router)
 app.include_router(health_router)
 app.include_router(work_orders_router)
 app.include_router(blackbox_router)
+app.include_router(twin_router)
 
 def get_lang(request: Request) -> str:
     return request.query_params.get("lang", "ar")
@@ -512,6 +514,29 @@ async def blackbox_incident_report_page(
         "rtl": lang == "ar",
         "user": current_user,
         "incident_id": incident_id
+    })
+
+@app.get("/twins", response_class=HTMLResponse)
+async def twins_page(
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["platform_owner", "tenant_admin", "optimization_engineer"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("twins/layouts.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user
     })
 
 if __name__ == "__main__":

@@ -1,0 +1,240 @@
+{% extends "app_base.html" %}
+
+{% block title %}{{ t.get('digital_twins', 'Digital Twins') }} - OPTRIA IQ{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="twinLayouts()">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ t.get('digital_twins', 'Digital Twins') }}</h1>
+            <p class="text-gray-600 mt-1">{{ t.get('twin_description', 'Visualize and manage industrial asset layouts') }}</p>
+        </div>
+        <button @click="openCreateModal()"
+                class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            {{ t.get('new_layout', 'New Layout') }}
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('total_layouts', 'Total Layouts') }}</p>
+            <p class="text-2xl font-bold text-gray-900" x-text="layouts.length || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('active_layouts', 'Active Layouts') }}</p>
+            <p class="text-2xl font-bold text-indigo-600" x-text="layouts.filter(l => l.is_active).length || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-sm text-gray-600">{{ t.get('total_nodes', 'Total Nodes') }}</p>
+            <p class="text-2xl font-bold text-green-600" x-text="totalNodes || 0"></p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase">{{ t.get('name', 'Name') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase">{{ t.get('site', 'Site') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase">{{ t.get('nodes', 'Nodes') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase">{{ t.get('status', 'Status') }}</th>
+                        <th class="px-6 py-3 text-{{ 'right' if lang == 'ar' else 'left' }} text-xs font-medium text-gray-500 uppercase">{{ t.get('actions', 'Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    <template x-for="layout in layouts" :key="layout.id">
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900" x-text="layout.name"></div>
+                                <div class="text-sm text-gray-500" x-text="layout.description || '-'"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600" x-text="layout.site_name || '-'"></td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800" x-text="(layout.nodes || []).length"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-3 py-1 text-sm rounded-full"
+                                      :class="layout.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
+                                      x-text="layout.is_active ? 'Active' : 'Inactive'"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <button @click="editLayout(layout)"
+                                        class="text-indigo-600 hover:text-indigo-900 mr-3">
+                                    {{ t.get('edit', 'Edit') }}
+                                </button>
+                                <button @click="deleteLayout(layout.id)"
+                                        class="text-red-600 hover:text-red-900">
+                                    {{ t.get('delete', 'Delete') }}
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div x-show="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" x-cloak>
+        <div class="bg-white rounded-xl shadow-lg p-6 max-w-2xl w-full">
+            <h2 class="text-xl font-bold mb-6">
+                <span x-show="!editingLayout">{{ t.get('new_layout', 'New Layout') }}</span>
+                <span x-show="editingLayout">{{ t.get('edit_layout', 'Edit Layout') }}</span>
+            </h2>
+            
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('name', 'Name') }}</label>
+                        <input type="text" x-model="form.name" class="w-full rounded-lg border-gray-300">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('site', 'Site') }}</label>
+                        <select x-model="form.site_id" class="w-full rounded-lg border-gray-300">
+                            <option value="">{{ t.get('select_site', 'Select a site') }}</option>
+                            <template x-for="site in sites" :key="site.id">
+                                <option :value="site.id" x-text="site.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('description', 'Description') }}</label>
+                    <textarea x-model="form.description" rows="2" class="w-full rounded-lg border-gray-300"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('width', 'Width') }}</label>
+                        <input type="number" x-model="form.width" class="w-full rounded-lg border-gray-300">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('height', 'Height') }}</label>
+                        <input type="number" x-model="form.height" class="w-full rounded-lg border-gray-300">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('color', 'Background') }}</label>
+                        <input type="color" x-model="form.background_color" class="w-full rounded-lg border-gray-300 h-10">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" x-model="form.is_default" class="rounded border-gray-300">
+                        <span class="ml-2 text-sm text-gray-700">{{ t.get('set_as_default', 'Set as default') }}</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" x-model="form.is_active" class="rounded border-gray-300">
+                        <span class="ml-2 text-sm text-gray-700">{{ t.get('active', 'Active') }}</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex gap-3 justify-end mt-6">
+                <button @click="closeModal()" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                    {{ t.get('cancel', 'Cancel') }}
+                </button>
+                <button @click="saveLayout()" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+                    {{ t.get('save', 'Save') }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function twinLayouts() {
+    return {
+        layouts: [],
+        sites: [],
+        totalNodes: 0,
+        showModal: false,
+        editingLayout: null,
+        form: {
+            name: '',
+            description: '',
+            site_id: '',
+            width: 1200,
+            height: 800,
+            background_color: '#ffffff',
+            is_default: false,
+            is_active: true
+        },
+        
+        async init() {
+            await this.loadLayouts();
+            await this.loadSites();
+        },
+        
+        async loadLayouts() {
+            const res = await fetch('/api/twins/layouts');
+            const data = await res.json();
+            this.layouts = data.layouts || [];
+            this.totalNodes = this.layouts.reduce((sum, l) => sum + (l.nodes?.length || 0), 0);
+        },
+        
+        async loadSites() {
+            const res = await fetch('/api/assets/sites');
+            const data = await res.json();
+            this.sites = data.sites || [];
+        },
+        
+        openCreateModal() {
+            this.editingLayout = null;
+            this.form = {
+                name: '',
+                description: '',
+                site_id: '',
+                width: 1200,
+                height: 800,
+                background_color: '#ffffff',
+                is_default: false,
+                is_active: true
+            };
+            this.showModal = true;
+        },
+        
+        editLayout(layout) {
+            this.editingLayout = layout;
+            this.form = { ...layout };
+            this.showModal = true;
+        },
+        
+        closeModal() {
+            this.showModal = false;
+            this.editingLayout = null;
+        },
+        
+        async saveLayout() {
+            const url = this.editingLayout 
+                ? `/api/twins/layouts/${this.editingLayout.id}`
+                : '/api/twins/layouts';
+            
+            const method = this.editingLayout ? 'PUT' : 'POST';
+            
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.form)
+            });
+            
+            if (res.ok) {
+                this.closeModal();
+                await this.loadLayouts();
+            }
+        },
+        
+        async deleteLayout(id) {
+            if (!confirm('{{ t.get("confirm_delete", "Are you sure?") }}')) return;
+            
+            const res = await fetch(`/api/twins/layouts/${id}`, { method: 'DELETE' });
+            if (res.ok) await this.loadLayouts();
+        }
+    }
+}
+</script>

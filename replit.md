@@ -29,9 +29,9 @@ core/                       - Core business logic
   auth.py, rbac.py, ai_service.py, optimization_engine.py, blackbox_engine.py
   connectors/ (base.py, demo.py, opcua.py, pi.py, sap.py, sql.py)
 routers/                    - API endpoints
-  auth.py, tenants.py, assets.py, optimization.py, integrations.py, work_orders.py, blackbox.py, health.py
+  auth.py, tenants.py, assets.py, optimization.py, integrations.py, work_orders.py, blackbox.py, twin.py, health.py
 templates/                  - Jinja2 HTML templates
-  base.html, app_base.html, landing.html, auth/, dashboard/, optimization/, assets/, integrations/, onboarding/, work_orders/, blackbox/, admin/
+  base.html, app_base.html, landing.html, auth/, dashboard/, optimization/, assets/, integrations/, onboarding/, work_orders/, blackbox/, twins/, admin/
 translations/               - ar.py (Arabic), en.py (English)
 scripts/smoke_test_e2e.py   - E2E verification tests
 ```
@@ -73,6 +73,10 @@ scripts/smoke_test_e2e.py   - E2E verification tests
 - **blackbox_incident_events**: id, tenant_id, incident_id, event_id, role (CAUSE/SYMPTOM/CONTEXT)
 - **blackbox_rca_rules**: id, tenant_id, name, pattern, root_cause_category, confidence
 
+### Digital Twin Tables
+- **twin_layouts**: id, tenant_id, site_id, name, description, config (JSONB), width, height, background_color, is_active, is_default
+- **twin_nodes**: id, tenant_id, layout_id, asset_id, node_type, label, position_x, position_y, width, height, rotation, color, style (JSONB), data_bindings (JSONB)
+
 ## RBAC Capabilities
 
 | Resource | platform_owner | tenant_admin | optimization_engineer | engineer | viewer |
@@ -102,6 +106,7 @@ scripts/smoke_test_e2e.py   - E2E verification tests
 - `/blackbox/incidents` - Industrial Black Box (engineer+)
 - `/blackbox/incidents/{id}` - Incident detail with timeline
 - `/blackbox/incidents/{id}/report` - Printable report
+- `/twins` - Digital Twin layouts & visualization (optimization_engineer+)
 - `/onboarding` - Setup wizard (tenant_admin+)
 - `/admin/tenants` - Tenant management (platform_owner)
 
@@ -115,6 +120,7 @@ scripts/smoke_test_e2e.py   - E2E verification tests
 ### Integrations: GET/POST /api/integrations/, POST /api/integrations/{id}/test, /api/integrations/{id}/demo-stream/{action}, GET/POST /api/integrations/mappings, /api/integrations/identity-providers, GET /api/integrations/cost-models/active
 ### Work Orders: GET/POST /api/work-orders/, GET/PUT /api/work-orders/{id}, POST /api/work-orders/{id}/start, POST /api/work-orders/{id}/complete
 ### Black Box: GET /api/blackbox/events, /api/blackbox/incidents, PUT /api/blackbox/incidents/{id}, POST /api/blackbox/incidents/{id}/rca, GET /api/blackbox/stats, POST /api/blackbox/engine/collect, /api/blackbox/engine/detect, /api/blackbox/engine/run, GET /api/blackbox/reports/{id}
+### Digital Twin: GET/POST /api/twins/layouts, GET/PUT/DELETE /api/twins/layouts/{id}, POST /api/twins/layouts/{id}/nodes, PUT/DELETE /api/twins/nodes/{id}, GET /api/twins/layouts/{id}/nodes
 
 ## Key Features
 
@@ -125,7 +131,8 @@ scripts/smoke_test_e2e.py   - E2E verification tests
 5. **Integration Management UI**: 4 tabs for data sources, signal mappings, SSO, cost models
 6. **Onboarding Wizard**: 6-step guided setup with auto-detection
 7. **Industrial Black Box**: Event collection, incident detection, RCA, timeline replay, printable reports
-8. **Bilingual Support**: Arabic (RTL) and English (LTR)
+8. **Digital Twin Visualization**: Layout management with asset-to-node binding, configurable node types and styling
+9. **Bilingual Support**: Arabic (RTL) and English (LTR)
 
 ## Environment Variables
 
@@ -151,6 +158,13 @@ python scripts/smoke_test_e2e.py  # Run tests
 ```
 
 ## Recent Changes
+
+### 2025-12-06: Digital Twin Configuration
+- Database models (TwinLayout, TwinNode) for visualization and asset binding
+- Complete CRUD API endpoints with multi-tenant isolation
+- Digital Twin UI at /twins with layout management and configuration
+- Configurable node types, styling, positioning, and data bindings
+- RBAC enforcement (optimization_engineer+ for management)
 
 ### 2025-12-05: Industrial Black Box
 - Database models (BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent, BlackBoxRCARule)

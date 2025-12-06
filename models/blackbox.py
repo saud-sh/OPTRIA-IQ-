@@ -59,13 +59,13 @@ class BlackBoxEvent(Base):
             "source_system": self.source_system,
             "source_type": self.source_type,
             "source_id": self.source_id,
-            "event_time": self.event_time.isoformat() if self.event_time else None,
-            "ingest_time": self.ingest_time.isoformat() if self.ingest_time else None,
+            "event_time": self.event_time.isoformat() if self.event_time else None,  # type: ignore
+            "ingest_time": self.ingest_time.isoformat() if self.ingest_time else None,  # type: ignore
             "severity": self.severity,
             "event_category": self.event_category,
             "summary": self.summary,
-            "payload": self.payload or {},
-            "tags": self.tags or [],
+            "payload": self.payload or {},  # type: ignore
+            "tags": self.tags or [],  # type: ignore
             "is_processed": self.is_processed
         }
 
@@ -132,19 +132,19 @@ class BlackBoxIncident(Base):
             "description": self.description,
             "root_asset_id": self.root_asset_id,
             "site_id": self.site_id,
-            "impact_scope": self.impact_scope or {},
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "end_time": self.end_time.isoformat() if self.end_time else None,
-            "trigger_event_id": str(self.trigger_event_id) if self.trigger_event_id else None,
+            "impact_scope": self.impact_scope or {},  # type: ignore
+            "start_time": self.start_time.isoformat() if self.start_time else None,  # type: ignore
+            "end_time": self.end_time.isoformat() if self.end_time else None,  # type: ignore
+            "trigger_event_id": str(self.trigger_event_id) if self.trigger_event_id else None,  # type: ignore
             "rca_status": self.rca_status,
-            "rca_summary": self.rca_summary or {},
-            "rca_completed_at": self.rca_completed_at.isoformat() if self.rca_completed_at else None,
-            "impact_estimate": self.impact_estimate or {},
+            "rca_summary": self.rca_summary or {},  # type: ignore
+            "rca_completed_at": self.rca_completed_at.isoformat() if self.rca_completed_at else None,  # type: ignore
+            "impact_estimate": self.impact_estimate or {},  # type: ignore
             "assigned_to": self.assigned_to,
             "resolved_by": self.resolved_by,
-            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,  # type: ignore
+            "created_at": self.created_at.isoformat() if self.created_at else None,  # type: ignore
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None  # type: ignore
         }
         if include_events and self.events:
             result["events"] = [e.to_dict() for e in self.events]
@@ -196,7 +196,7 @@ class BlackBoxIncidentEvent(Base):
             "sequence_order": self.sequence_order,
             "notes": self.notes,
             "added_by": self.added_by,
-            "added_at": self.added_at.isoformat() if self.added_at else None
+            "added_at": self.added_at.isoformat() if self.added_at else None  # type: ignore
         }
 
 
