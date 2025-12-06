@@ -84,6 +84,63 @@ class DemoConnector(BaseConnector):
             "MOTOR_001_TEMPERATURE"
         ]
     
+    def fetch_timeseries(self, tag: str, from_time, to_time, limit: int = 100) -> List[Dict[str, Any]]:
+        """Generate synthetic time-series data for demo purposes"""
+        import math
+        from datetime import timedelta
+        
+        if from_time is None:
+            from_time = datetime.utcnow() - timedelta(hours=1)
+        if to_time is None:
+            to_time = datetime.utcnow()
+        
+        total_seconds = (to_time - from_time).total_seconds()
+        if total_seconds <= 0:
+            total_seconds = 3600
+        
+        num_points = min(limit, max(10, int(total_seconds / 60)))
+        interval = total_seconds / num_points
+        
+        _, unit = self._generate_value(tag)
+        
+        base_value, _ = self._generate_value(tag)
+        
+        points = []
+        for i in range(num_points):
+            ts = from_time + timedelta(seconds=i * interval)
+            
+            sine_component = math.sin(2 * math.pi * i / num_points) * (base_value * 0.1)
+            noise = random.uniform(-0.05, 0.05) * base_value
+            value = base_value + sine_component + noise
+            
+            if "temperature" in tag.lower():
+                value = round(60 + 20 * math.sin(2 * math.pi * i / num_points) + random.uniform(-2, 2), 2)
+            elif "vibration" in tag.lower():
+                value = round(2.5 + 1.5 * math.sin(2 * math.pi * i / num_points) + random.uniform(-0.3, 0.3), 3)
+            elif "pressure" in tag.lower():
+                value = round(50 + 10 * math.sin(2 * math.pi * i / num_points) + random.uniform(-1, 1), 2)
+            elif "flow" in tag.lower():
+                value = round(250 + 50 * math.sin(2 * math.pi * i / num_points) + random.uniform(-5, 5), 2)
+            elif "level" in tag.lower():
+                value = round(60 + 15 * math.sin(2 * math.pi * i / num_points) + random.uniform(-2, 2), 1)
+            elif "current" in tag.lower():
+                value = round(120 + 20 * math.sin(2 * math.pi * i / num_points) + random.uniform(-3, 3), 2)
+            elif "speed" in tag.lower() or "rpm" in tag.lower():
+                value = round(2800 + 200 * math.sin(2 * math.pi * i / num_points) + random.uniform(-20, 20), 0)
+            elif "power" in tag.lower():
+                value = round(1200 + 300 * math.sin(2 * math.pi * i / num_points) + random.uniform(-20, 20), 2)
+            else:
+                value = round(base_value + sine_component + noise, 2)
+            
+            points.append({
+                "timestamp": ts.isoformat() + "Z",
+                "value": value,
+                "unit": unit,
+                "quality": "good"
+            })
+        
+        return points
+    
     @staticmethod
     def get_config_schema() -> Dict[str, Any]:
         return {

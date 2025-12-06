@@ -52,6 +52,14 @@ class BaseConnector(ABC):
     def get_available_tags(self) -> List[str]:
         pass
     
+    def fetch_timeseries(self, tag: str, from_time: datetime, to_time: datetime, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Fetch time-series data for a tag between from_time and to_time.
+        Returns list of dicts: [{"timestamp": "...", "value": ..., "unit": "..."}]
+        Default implementation returns empty list - override in subclasses.
+        """
+        return []
+    
     def get_status(self) -> Dict[str, Any]:
         return {
             "type": self.connector_type,
