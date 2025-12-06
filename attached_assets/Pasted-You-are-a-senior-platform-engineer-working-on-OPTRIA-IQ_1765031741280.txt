@@ -1,0 +1,108 @@
+You are a senior platform engineer working on OPTRIA IQ, an industrial operations optimization SaaS.
+
+IMPORTANT ARCHITECTURE RULES (DO NOT BREAK):
+- Keep the existing stack: FastAPI (Python) + SQLAlchemy + Jinja2 templates + Tailwind + Alpine.js.
+- Keep the multi-tenant model and RBAC exactly as is (tenant_id on all business tables).
+- NO destructive migrations: no DROP TABLE, no DROP COLUMN, no CASCADE. Additive schema changes only.
+- Keep Neon PostgreSQL as the main database (DATABASE_URL env var).
+- Keep JWT auth and current session/secret model.
+- All new features must be tenant-aware and respect RBAC.
+
+GOAL:
+Take the current OPTRIA IQ codebase to a truly production-ready SaaS level, using Replit’s capabilities as much as possible (Deployments, Workflows, Security Scanner, Secrets). The result must be a fully usable, demo-ready and sale-ready product.
+
+PART 1 – TENANT USER MANAGEMENT
+1. Add full tenant-level user management:
+   - A new UI page for tenant admins to manage users inside their tenant:
+     - List users (username, role, status, last login).
+     - Create user (username, email, role, active flag).
+     - Edit user (change role, activate/deactivate).
+   - Wire this UI to backend APIs:
+     - Use existing /api/users endpoints if available, otherwise create safe, tenant-scoped endpoints.
+   - Enforce:
+     - tenant_admin can manage ONLY users in their tenant.
+     - platform_owner can see all tenants’ users from the owner console.
+   - No user is allowed to change their own role or re-activate themselves if disabled.
+
+PART 2 – DIGITAL TWIN PAGE (SEPARATE, BUT CONNECTED TO ASSETS)
+1. Create a dedicated “Digital Twin” page:
+   - Route: GET /digital-twin (tenant-scoped, authenticated).
+   - Show an interactive layout of assets (at least cards or simple schematic), grouped by site/unit.
+   - For each asset:
+     - Show name, type, health score, status, and active alerts count.
+   - When clicking an asset:
+     - Open a side panel or modal with:
+       - Link to the asset details page.
+       - Latest metrics (from asset_metrics_snapshot).
+       - AI scores (health, failure probability, RUL).
+
+2. Data wiring:
+   - Use existing asset and metrics tables (do NOT create new duplicates).
+   - Make sure digital twin queries are always filtered by tenant_id.
+   - Prepare the code so that in the future we can swap the simple layout with a graphical SVG twin without changing the backend APIs.
+
+PART 3 – INDUSTRIAL BLACK BOX INTEGRATION
+1. Ensure the new Black Box layer is fully integrated:
+   - Event ingestion:
+     - Collect events from: alerts, work orders, AI engine outputs, and (if available) external integrations.
+     - Map them into the canonical event model and store them in the blackbox_events table (or equivalent).
+     - Make sure each event has tenant_id, asset_id if possible, source_system, source_type, event_time, severity, payload JSON.
+   - Incident model:
+     - Group related events into incidents using the existing incident engine logic.
+     - Store incidents with: severity, status, root_asset_id, start_time, end_time, rca_summary, impact_estimate.
+
+2. Black Box UI:
+   - A main Black Box page in the sidebar (already present in Arabic as “الصندوق الأسود”):
+     - Filters: time range, severity, type, status.
+     - KPIs: total incidents, critical incidents, open incidents, events in last 24h.
+     - Table of incidents with actions: View Timeline, View Report.
+
+   - Incident Detail / Timeline page:
+     - Show a time-ordered event ladder (sensor events, alerts, work orders, operator actions).
+     - Allow basic replay controls (step through events).
+     - Show a summary RCA section with root cause hypothesis and contributing factors.
+
+   - Connect the Black Box timeline with assets and digital twin:
+     - From an incident, you can navigate to the related asset or highlight it in the digital twin.
+
+3. Make sure the Black Box code respects:
+   - Tenant isolation.
+   - RBAC (reliability engineers and tenant_admin see full details, basic viewers see summarized info).
+
+PART 4 – UI/UX POLISH & RESPONSIVENESS
+1. Review all main pages:
+   - Owner dashboard, tenant dashboard, optimization pages, assets, integrations, work orders, black box, digital twin.
+2. For each page:
+   - Ensure full responsiveness (mobile-first behavior) using Tailwind (no external JS frameworks).
+   - Improve empty states, loading states, and error messages (Arabic + English).
+   - Ensure consistent spacing, typography, and component style across the app.
+
+PART 5 – PRODUCTION HARDENING USING REPLIT FEATURES
+1. Add or update the following files for operations:
+   - README.md: high-level overview and how to run locally.
+   - OPS_RUNBOOK.md: how to deploy, rotate secrets, handle incidents, run smoke tests.
+   - TENANT_ONBOARDING.md: how a new tenant is created and onboarded using the Setup Wizard.
+
+2. Tests:
+   - Keep the existing scripts/smoke_test_e2e.py.
+   - Add at least a small set of unit/integration tests for:
+     - auth & RBAC.
+     - optimization engine.
+     - black box event ingestion + incident creation.
+
+3. Replit workflows (describe as comments or docs):
+   - A workflow that runs the smoke test daily in staging.
+   - A workflow that runs tests on each commit or deployment.
+   - Note: just provide the .replit or workflow config files and documentation; do NOT hard-code any environment-specific secrets.
+
+CONSTRAINTS:
+- Do NOT change the database in a destructive way.
+- Do NOT introduce a new framework (no React, no Next.js, no new auth system).
+- Keep everything compatible with the current Replit Deployment (port 5000, existing secrets).
+- Reuse existing styles and layout components as much as possible.
+
+After you finish:
+- Generate a short SUMMARY.md in the repo root describing:
+  - What was added/changed.
+  - How to access each new screen.
+  - Any manual steps the platform owner (Ziyad) must do in Replit (e.g., adding secrets, enabling workflows).

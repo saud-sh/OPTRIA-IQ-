@@ -154,10 +154,10 @@
         <div x-show="selectedAsset" x-transition class="w-80 bg-white rounded-xl shadow-sm border overflow-hidden flex-shrink-0">
             <div class="p-4 border-b flex items-center justify-between"
                  :class="{
-                     'bg-green-50': assetDetail?.health?.health_score >= 80,
-                     'bg-yellow-50': assetDetail?.health?.health_score >= 50 && assetDetail?.health?.health_score < 80,
-                     'bg-red-50': assetDetail?.health?.health_score < 50 && assetDetail?.health?.health_score !== null,
-                     'bg-gray-50': assetDetail?.health?.health_score === null
+                     'bg-green-50': assetDetail && assetDetail.health && assetDetail.health.health_score >= 80,
+                     'bg-yellow-50': assetDetail && assetDetail.health && assetDetail.health.health_score >= 50 && assetDetail.health.health_score < 80,
+                     'bg-red-50': assetDetail && assetDetail.health && assetDetail.health.health_score < 50 && assetDetail.health.health_score !== null,
+                     'bg-gray-50': !assetDetail || !assetDetail.health || assetDetail.health.health_score === null
                  }">
                 <h3 class="font-semibold text-gray-900" x-text="selectedAsset?.name"></h3>
                 <button @click="selectedAsset = null; assetDetail = null" class="p-1 hover:bg-gray-200 rounded">
@@ -200,22 +200,22 @@
                         <div class="bg-gray-50 rounded-lg p-3 text-center">
                             <p class="text-2xl font-bold"
                                :class="{
-                                   'text-green-600': assetDetail?.health?.health_score >= 80,
-                                   'text-yellow-600': assetDetail?.health?.health_score >= 50 && assetDetail?.health?.health_score < 80,
-                                   'text-red-600': assetDetail?.health?.health_score < 50 && assetDetail?.health?.health_score !== null,
-                                   'text-gray-400': assetDetail?.health?.health_score === null
+                                   'text-green-600': assetDetail && assetDetail.health && assetDetail.health.health_score >= 80,
+                                   'text-yellow-600': assetDetail && assetDetail.health && assetDetail.health.health_score >= 50 && assetDetail.health.health_score < 80,
+                                   'text-red-600': assetDetail && assetDetail.health && assetDetail.health.health_score < 50 && assetDetail.health.health_score !== null,
+                                   'text-gray-400': !assetDetail || !assetDetail.health || assetDetail.health.health_score === null
                                }"
-                               x-text="assetDetail?.health?.health_score !== null ? assetDetail.health.health_score + '%' : '--'"></p>
+                               x-text="(assetDetail && assetDetail.health && assetDetail.health.health_score !== null) ? assetDetail.health.health_score + '%' : '--'"></p>
                             <p class="text-xs text-gray-500">{{ t.get('health_score', 'Health Score') }}</p>
                         </div>
                         <div class="bg-gray-50 rounded-lg p-3 text-center">
                             <p class="text-2xl font-bold text-orange-600" 
-                               x-text="assetDetail?.health?.failure_probability !== null ? (assetDetail.health.failure_probability * 100).toFixed(1) + '%' : '--'"></p>
+                               x-text="(assetDetail && assetDetail.health && assetDetail.health.failure_probability !== null) ? (assetDetail.health.failure_probability * 100).toFixed(1) + '%' : '--'"></p>
                             <p class="text-xs text-gray-500">{{ t.get('failure_prob', 'Failure Prob.') }}</p>
                         </div>
                         <div class="bg-gray-50 rounded-lg p-3 text-center col-span-2">
                             <p class="text-2xl font-bold text-blue-600" 
-                               x-text="assetDetail?.health?.remaining_useful_life_days !== null ? assetDetail.health.remaining_useful_life_days + ' days' : '--'"></p>
+                               x-text="(assetDetail && assetDetail.health && assetDetail.health.remaining_useful_life_days !== null) ? assetDetail.health.remaining_useful_life_days + ' days' : '--'"></p>
                             <p class="text-xs text-gray-500">{{ t.get('remaining_life', 'Remaining Useful Life') }}</p>
                         </div>
                     </div>
