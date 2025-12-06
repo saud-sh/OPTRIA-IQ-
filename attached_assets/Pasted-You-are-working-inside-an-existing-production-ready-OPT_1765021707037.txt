@@ -1,0 +1,992 @@
+You are working inside an existing, production-ready OPTRIA IQ project with this stack:
+
+
+Backend: FastAPI + Python 3.11 + SQLAlchemy
+
+
+Frontend: Jinja2 templates + Tailwind (CDN) + Alpine.js
+
+
+DB: PostgreSQL (Neon)
+
+
+Features already implemented: multi-tenant RBAC, optimization engine (4 models), AI scores, integrations (OPC-UA / PI / SAP / SQL / Demo), onboarding wizard, Arabic/English UI, “Industrial Black Box” page stub, etc.
+
+
+Your task now is to implement the complete Industrial Black Box + Digital Twin Replay layer on top of the current system, without breaking or refactoring existing features.
+Follow these rules strictly:
+
+
+NO destructive DB changes:
+
+
+No DROP TABLE, DROP COLUMN, CASCADE, or schema changes to existing tables.
+
+
+Only additive new tables / columns / indexes.
+
+
+
+
+Multi-tenant safety:
+
+
+Every new business table must have tenant_id.
+
+
+All queries must filter by tenant_id.
+
+
+Reuse the existing require_tenant_access / RBAC decorators.
+
+
+
+
+Non-intrusive OT:
+
+
+Black Box & Digital Twin are read-only with respect to OT/SCADA.
+
+
+Do NOT send control/command signals to external systems.
+
+
+
+
+Architecture-first:
+
+
+Before coding, generate a short blueprint describing DB models, services, routers, and templates you will add.
+
+
+Then implement step-by-step, running tests and smoke checks.
+
+
+
+
+
+1) GOAL – Industrial Black Box + Digital Twin Replay
+Extend OPTRIA IQ so that it behaves like an Industrial Flight Recorder:
+
+
+Continuously ingests and normalizes events from IT + OT sources:
+
+
+OPTRIA alerts & anomalies
+
+
+Work orders
+
+
+AI/optimization outputs
+
+
+External historian / OPC-UA signals (via existing connectors, read-only)
+
+
+
+
+Groups events into Incidents (failures, near-misses, anomalies).
+
+
+Runs a rule-based RCA engine to propose root cause(s) + contributing factors.
+
+
+Provides:
+
+
+Black Box Incident List & Detail pages
+
+
+Timeline Replay API
+
+
+Digital Twin playback mode (visualizing assets during the incident window)
+
+
+Black Box Incident Report (technical + management view).
+
+
+
+
+The UI already contains a "الصندوق الأسود الصناعي" (Industrial Black Box) page stub and menu item. Wire it to real data and add missing pages/flows.
+
+2) DATA MODEL – New Tables (additive only)
+Create new SQLAlchemy models and migrations (additive):
+2.1 BlackboxEvent
+New table: blackbox_events
+Required fields (minimum):
+
+
+id (UUID / primary key)
+
+
+tenant_id (FK → tenants, required)
+
+
+asset_id (nullable FK → assets)
+
+
+source_system (string; e.g. "PI", "OPC_UA", "SQL", "OPTRIA_ALERT", "OPTRIA_WORK_ORDER", "OPTIMIZATION")
+
+
+source_type (string enum; e.g. "TAG_READING", "ALERT", "ALARM", "WORK_ORDER", "OPERATOR_ACTION", "SYSTEM_LOG", "OPTIMIZATION_RECOMMENDATION")
+
+
+source_id (string; external id / tag name / alert_id / work_order_id / optimization_run_id)
+
+
+event_time (UTC timestamp – time the event occurred)
+
+
+ingest_time (UTC timestamp – when OPTRIA ingested it)
+
+
+severity (enum or string: "INFO", "WARNING", "MINOR", "MAJOR", "CRITICAL")
+
+
+event_category (enum or string: "SENSOR", "ALERT", "FAILURE", "MAINTENANCE", "OPERATOR_ACTION", "CONFIG_CHANGE", "SYSTEM")
+
+
+summary (short text)
+
+
+payload (JSONB – arbitrary structured data; ex: value, unit, before/after, operator, etc.)
+
+
+Optional contextual fields:
+
+
+site_id, unit_id, line_id (nullable FKs where applicable)
+
+
+shift_id (nullable)
+
+
+batch_id / lot_id (nullable)
+
+
+tags (array/text for search)
+
+
+
+
+Indexes:
+
+
+Composite index on (tenant_id, asset_id, event_time)
+
+
+Index on (tenant_id, event_category, severity, event_time)
+
+
+2.2 BlackboxIncident
+New table: blackbox_incidents
+Fields:
+
+
+id (UUID PK)
+
+
+tenant_id (required)
+
+
+incident_type ("FAILURE", "NEAR_MISS", "ANOMALOUS_BEHAVIOR")
+
+
+status ("OPEN", "INVESTIGATING", "RESOLVED", "CLOSED")
+
+
+severity ("MINOR", "MAJOR", "CRITICAL", "CATASTROPHIC")
+
+
+root_asset_id (FK → assets)
+
+
+impact_scope (JSONB – list of assets/units/sites impacted)
+
+
+start_time / end_time
+
+
+trigger_event_id (FK → blackbox_events.id)
+
+
+rca_summary (JSONB or text – root cause, contributing factors, confidence)
+
+
+impact_estimate (JSONB – downtime, cost, lost production, etc.)
+
+
+created_at / updated_at
+
+
+2.3 BlackboxIncidentEvent
+New table: blackbox_incident_events
+Fields:
+
+
+id (PK)
+
+
+tenant_id
+
+
+incident_id (FK → blackbox_incidents)
+
+
+event_id (FK → blackbox_events)
+
+
+role (string enum: "CAUSE", "SYMPTOM", "CONTEXT", "NOISE", "UNKNOWN")
+
+
+order_index (int for ordering within the timeline)
+
+
+2.4 Digital Twin Tables
+Design minimal tables to support layout + asset mapping + replay:
+TwinLayout
+
+
+id (PK)
+
+
+tenant_id
+
+
+site_id (FK → site)
+
+
+name (e.g. “ARAMCO P – Plant 1”)
+
+
+config (JSONB – layout metadata, dimensions, optional background image reference)
+
+
+created_at / updated_at
+
+
+TwinNode
+
+
+id (PK)
+
+
+tenant_id
+
+
+layout_id (FK → TwinLayout)
+
+
+asset_id (FK → Asset)  – nullable for non-asset nodes
+
+
+type (e.g. "pump", "tank", "line", "sensor", "group")
+
+
+label
+
+
+position (JSONB – x/y or more advanced)
+
+
+style (JSONB – optional; icon, color, etc.)
+
+
+created_at / updated_at
+
+
+All new models must follow existing project conventions (base class, metadata, etc.) and respect tenant_id.
+
+3) EVENT INGESTION PIPELINE
+Implement a Black Box service (e.g. core/blackbox_service.py) responsible for:
+3.1 Event Collectors
+Create collectors that transform existing OPTRIA data into BlackboxEvent objects:
+
+
+Alerts Collector
+
+
+Read from existing alerts/AI anomaly tables.
+
+
+For each alert (especially CRITICAL / HIGH severity):
+
+
+Create BlackboxEvent with:
+
+
+source_system="OPTRIA_ALERT"
+
+
+source_type="ALERT"
+
+
+event_category="ALERT" or "FAILURE" if alert denotes trip/shutdown
+
+
+Link to asset_id, site_id, etc.
+
+
+
+
+
+
+
+
+Work Orders Collector
+
+
+From work_orders table:
+
+
+On creation / status change / closure:
+
+
+source_system="OPTRIA_WORK_ORDER"
+
+
+source_type="WORK_ORDER"
+
+
+event_category="MAINTENANCE"
+
+
+Payload includes status, priority, assignee, etc.
+
+
+
+
+
+
+
+
+AI & Optimization Collector
+
+
+From optimization models and/or optimization_runs table (if exists):
+
+
+Record as events:
+
+
+source_system="OPTRIA_OPTIMIZATION"
+
+
+source_type="OPTIMIZATION_RUN"
+
+
+event_category="SYSTEM" or "MAINTENANCE" depending on model
+
+
+Payload includes model type, recommended actions, etc.
+
+
+
+
+
+
+For important recommendations (e.g. asset flagged as top priority), create additional events of type "OPTIMIZATION_RECOMMENDATION".
+
+
+
+
+Historian / OT Signals (Demo-Level)
+
+
+Without building full streaming:
+
+
+Reuse current integration layer to pull interesting points from PI/opcua/sql:
+
+
+Threshold crossings (e.g. value exceeds configured band).
+
+
+Status changes (ON→OFF, Normal→Alarm).
+
+
+
+
+Map to:
+
+
+source_system="PI" or "OPC_UA" or "SQL"
+
+
+source_type="TAG_READING"
+
+
+event_category="SENSOR"
+
+
+Payload: tag, value, unit, status, raw timestamp.
+
+
+
+
+
+
+
+
+3.2 Background Job / Scheduler
+
+
+Integrate with existing background job approach (APScheduler or equivalent).
+
+
+Add periodic tasks (e.g. every 1–5 minutes) to:
+
+
+Pull new alerts / work orders / optimization runs / historian anomalies.
+
+
+Insert into blackbox_events.
+
+
+
+
+Ensure idempotency:
+
+
+Avoid duplicating events (use source_id + source_system + timestamp as uniqueness logic).
+
+
+
+
+3.3 Time Normalization & Late Events
+
+
+Ensure all event timestamps are stored in UTC.
+
+
+If source timestamp is unavailable, use ingest_time.
+
+
+Design queries to support late events; incidents in “OPEN / may update” state within a grace period (e.g. 60 min).
+
+
+
+4) INCIDENT ENGINE & RCA
+Implement a core/blackbox_engine.py with:
+4.1 Incident Creation Logic
+
+
+Trigger when:
+
+
+New CRITICAL or MAJOR alert event is ingested.
+
+
+Or a failure-type event is detected (e.g. pump_trip, unit_shutdown) via payload.
+
+
+
+
+Steps:
+
+
+Determine root asset (root_asset_id) and context (site/unit).
+
+
+Define incident window (configurable):
+
+
+Default: [T-30min, T+30min] around the trigger event.
+
+
+Make window configurable per tenant and/or asset class (simple config table or JSON in tenant settings).
+
+
+
+
+Query blackbox_events within that window and same context:
+
+
+Same asset_id
+
+
+Or related assets in the same site/unit (use asset hierarchy if available).
+
+
+
+
+Create BlackboxIncident + related BlackboxIncidentEvent rows.
+
+
+If a new trigger appears close to an existing incident:
+
+
+Decide whether to attach to the existing incident or create a new one (e.g. based on time gap and assets).
+
+
+
+
+4.2 Rule-Based RCA Engine (v1)
+Implement a small, maintainable rules engine:
+
+
+Represent rules in Python or JSON/DSL, e.g.:
+
+
+{
+  "name": "Pump trip after pressure spike",
+  "applies_to_asset_type": "pump",
+  "conditions": [
+    {"category": "SENSOR", "payload.path": "pressure", "change": "spike", "within_minutes": 10},
+    {"category": "ALERT", "summary_contains": "trip", "within_minutes": 2}
+  ],
+  "result": {
+    "root_cause_category": "PROCESS",
+    "label": "Pressure surge causing pump trip",
+    "confidence": 0.7
+  }
+}
+
+Rules should be able to:
+
+
+Detect sequences of events (pressure spike → temperature rise → trip).
+
+
+Combine sensor + alert + operator + maintenance info.
+
+
+Optionally include relationships to recent work orders (“failure occurs within Y hours after last maintenance”).
+
+
+The engine should:
+
+
+Run over the incident’s event list (ordered by event_time).
+
+
+Tag each BlackboxIncidentEvent.role as CAUSE, SYMPTOM, CONTEXT, etc. where possible.
+
+
+Populate BlackboxIncident.rca_summary with:
+
+
+root_cause_category (MECHANICAL, ELECTRICAL, PROCESS, HUMAN, EXTERNAL)
+
+
+main_hypothesis
+
+
+contributing_factors
+
+
+confidence
+
+
+
+
+Keep design extensible so we can later plug ML-based RCA; for now, rules only.
+
+5) TIMELINE REPLAY & DIGITAL TWIN INTEGRATION
+5.1 Black Box APIs
+Create a new router routers/blackbox.py with endpoints:
+
+
+GET /api/blackbox/incidents
+
+
+Filters: tenant, severity, status, date range, type.
+
+
+Returns a paginated list for the Black Box main page.
+
+
+
+
+GET /api/blackbox/incidents/{incident_id}
+
+
+Full details including:
+
+
+Incident metadata
+
+
+RCA summary
+
+
+impact_estimate
+
+
+list of key events (summarized).
+
+
+
+
+
+
+GET /api/blackbox/incidents/{incident_id}/timeline
+
+
+Parameters: optional from, to, category, asset_id.
+
+
+Returns:
+
+
+Ordered list of events for the period, grouped by:
+
+
+asset
+
+
+event_category
+
+
+
+
+Optional “decimated” sensor points for plotting.
+
+
+
+
+
+
+GET /api/blackbox/reports/{incident_id}
+
+
+Returns JSON with structured report:
+
+
+Header, executive summary, timeline bullets, RCA, impact, recommendations.
+
+
+
+
+Later we can add HTML/PDF, but now just JSON.
+
+
+
+
+All endpoints MUST:
+
+
+Enforce authentication and require_tenant_access.
+
+
+Filter strictly by tenant_id.
+
+
+Wire routes in main.py without breaking existing ones.
+5.2 Digital Twin APIs
+Create router routers/digital_twin.py:
+
+
+GET /api/digital-twin/layouts/{site_id}
+
+
+Returns layout + nodes for the site (from TwinLayout/TwinNode).
+
+
+
+
+GET /api/digital-twin/state
+
+
+Params: site_id, at (ISO timestamp), optional incident_id.
+
+
+Returns per-asset state at that time:
+
+
+status: NORMAL, WARNING, ALARM, FAILED
+
+
+key metrics (value, min/max in small window).
+
+
+
+
+Derive states using events and/or existing metrics snapshots.
+
+
+
+
+GET /api/digital-twin/incidents-for-asset
+
+
+Params: asset_id, optional date range.
+
+
+Returns last N incidents touching that asset.
+
+
+
+
+5.3 Frontend – Black Box Pages
+Reuse / extend existing templates under templates/:
+
+
+Industrial Black Box main page (already exists as “الصندوق الأسود الصناعي”):
+
+
+Wire filters to GET /api/blackbox/incidents.
+
+
+Table shows incidents with columns:
+
+
+ID, title/summary, type, severity, status, start_time, duration, actions.
+
+
+
+
+Top KPIs:
+
+
+Total incidents in period
+
+
+Critical incidents
+
+
+Open incidents
+
+
+Events last 24h
+
+
+
+
+For each row, add actions:
+
+
+“عرض التفاصيل” → incident detail page
+
+
+“عرض على التوأم الرقمي” → opens Twin with incident window.
+
+
+
+
+
+
+Incident Detail page (new template):
+
+
+Sections:
+
+
+Header (type, severity, time range, root asset).
+
+
+Executive summary.
+
+
+RCA Summary (root cause category, main hypothesis, contributing factors).
+
+
+Impact (downtime, cost if available).
+
+
+Buttons:
+
+
+“عرض الجدول الزمني” (scrolls to timeline)
+
+
+“فتح التوأم الرقمي” (links to twin replay page with query params).
+
+
+
+
+
+
+Timeline area:
+
+
+Use Alpine.js to call /api/blackbox/incidents/{id}/timeline.
+
+
+Render event ladder (grouped by asset/category).
+
+
+
+
+
+
+5.4 Frontend – Digital Twin (Live + Replay)
+Create/extend templates for Digital Twin (e.g. templates/digital_twin/index.html):
+
+
+Modes:
+
+
+Live Mode:
+
+
+Shows current state (using /api/digital-twin/state?at=now or existing metrics endpoints).
+
+
+
+
+Replay Mode:
+
+
+If opened with incident_id, show time slider covering [incident.start_time, incident.end_time or start+window].
+
+
+On slider move, call /api/digital-twin/state?site_id=X&at=timestamp&incident_id=Y.
+
+
+Color nodes (assets) by status (Normal/Warning/Alarm/Failed).
+
+
+On clicking a node:
+
+
+Show asset name + latest value(s) + list of incidents linked to this asset (via /api/digital-twin/incidents-for-asset).
+
+
+Link back to Black Box Incident detail page.
+
+
+
+
+
+
+
+
+Keep UI Arabic-first with English labels via existing translations layer.
+
+6) SECURITY, RBAC & CONFIG
+
+
+Apply require_tenant_access and RBAC consistently:
+
+
+Reliability engineers, tenant_admins, and platform_owner can see full incident details.
+
+
+Engineers may see limited detail (e.g., hide sensitive operator info if necessary).
+
+
+Viewers: summary only.
+
+
+
+
+For any payload containing operator IDs or sensitive fields:
+
+
+Consider role-based masking in serializers (e.g., show initials or role only).
+
+
+
+
+Add optional feature flags in config.py (default true):
+
+
+BLACKBOX_ENABLED
+
+
+DIGITAL_TWIN_ENABLED
+
+
+Use these flags to:
+
+
+Hide menu items / pages when disabled.
+
+
+Return 423 (Locked) or similar if API called while feature disabled.
+
+
+
+7) TESTING & VERIFICATION
+
+
+Extend scripts/smoke_test_e2e.py (or create new scripts/smoke_test_blackbox.py) to:
+
+
+Create a test tenant, site, asset.
+
+
+Generate a fake alert + work order + optimization run.
+
+
+Run ingestion functions to populate blackbox_events.
+
+
+Trigger an incident and verify:
+
+
+Incident created with correct tenant_id, root_asset_id, time window.
+
+
+incident_events populated.
+
+
+RCA summary not empty.
+
+
+
+
+Call:
+
+
+/api/blackbox/incidents
+
+
+/api/blackbox/incidents/{id}
+
+
+/api/blackbox/incidents/{id}/timeline
+
+
+/api/digital-twin/state
+and validate non-error responses.
+
+
+
+
+
+
+Ensure existing smoke tests still pass.
+
+
+Do NOT modify existing behavior of optimization, integrations, auth, tenants, etc., except to hook into events in an additive way.
+
+
+
+8) FINAL CHECKLIST
+Before you say you’re done, confirm and summarize:
+
+
+✅ New DB models created (events, incidents, incident_events, twin_layout, twin_node) with tenant_id and indices.
+
+
+✅ Event ingestion pipeline in place for alerts, work orders, optimization runs, and at least demo historian signals.
+
+
+✅ Incident engine groups events and runs rule-based RCA.
+
+
+✅ Black Box APIs implemented and documented (list, detail, timeline, report).
+
+
+✅ Black Box main page + incident detail page wired to APIs (Arabic UI).
+
+
+✅ Digital Twin APIs and pages support Live + Replay modes and integrate with incidents.
+
+
+✅ All new routes are authenticated, tenant-aware, and RBAC-secured.
+
+
+✅ No destructive migrations or breaking changes to existing tables or flows.
+
+
+✅ Smoke tests (core + black box) pass successfully.
+
+
+Work inside the existing architecture and coding style.
+Do not introduce new frameworks (no React/SPA rewrite).
+Keep everything consistent with the current FastAPI + Jinja2 multi-tenant SaaS design.
