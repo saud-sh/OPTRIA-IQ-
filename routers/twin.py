@@ -8,12 +8,13 @@ from sqlalchemy import func
 from typing import Optional, List
 from datetime import datetime, timedelta
 from models.user import User
-from models.blackbox import TwinLayout, TwinNode
+from models.blackbox import TwinLayout, TwinNode, BlackBoxIncident
 from models.asset import Asset, Site, AssetAIScore
 from models.integration import TenantIntegration, ExternalSignalMapping
 from core.auth import get_current_user
 from core.rbac import has_capability
 from models.base import get_db
+from core.twin_service import get_twin_assets_for_tenant
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/twins", tags=["twins"])
@@ -393,6 +394,30 @@ async def list_layout_nodes(
     return {
         "nodes": [n.to_dict() for n in nodes],
         "total": len(nodes)
+    }
+
+
+@router.get("/summary")
+async def get_twin_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get Digital Twin summary with aggregated stats and asset list"""
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    assets, summary = get_twin_assets_for_tenant(db, current_user.tenant_id)
+    
+    return {
+        "stats": {
+            "total_assets": summary.total_assets,
+            "live_assets": summary.live_assets,
+            "disconnected": summary.disconnected,
+            "critical": summary.critical,
+            "warning": summary.warning,
+            "normal": summary.normal
+        },
+        "assets": [a.dict() for a in assets]
     }
 
 

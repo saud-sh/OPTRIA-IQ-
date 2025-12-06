@@ -1,0 +1,282 @@
+You are working on the OPTRIA IQ project (FastAPI + Jinja2 + PostgreSQL, multi-tenant, RBAC, Digital Twin, BlackBox, Integrations).
+
+GOAL:
+Do NOT implement 3D. Instead, significantly improve the existing Digital Twin UI/UX and make sure it is clearly wired to real external data sources (OPC-UA demo server, PI WebAPI demo, External SQL demo) using the existing connectors and integration/mapping model.
+
+Important constraints:
+- Keep the current stack: FastAPI + Jinja2 templates + Alpine.js + Tailwind (CDN).
+- No destructive DB changes (additive-only migrations).
+- Preserve multi-tenant isolation (tenant_id on all queries).
+- Preserve RBAC behavior.
+- Keep the BlackBox and Optimization modules as they are (only connect to them, no breaking changes).
+
+====================================================
+1) BACKEND – DIGITAL TWIN DATA CONTRACT
+====================================================
+
+1.1 Review current Digital Twin implementation:
+
+- routers/twin.py
+- templates/twin/index.html (or equivalent twin template)
+- Any existing /api/twins/* endpoints
+- AI score model: AssetAIScore (computed_at field)
+- Asset model + relationships (Site, Tenant, etc.)
+
+Confirm what currently powers the "Digital Twin" page shown in the UI screenshots (cards with High / Medium criticality, etc.).
+
+1.2 Introduce a clear backend service that aggregates "live status" per asset:
+
+Create a new module, for example:
+
+- core/twin_service.py
+
+This service will:
+
+- For a given tenant_id, return a structured list of assets with:
+  - Asset metadata (id, name, asset_type, site, criticality)
+  - Latest AI scores (health, failure_probability, risk_index)
+  - Connection status per data source (opcua / pi / external_sql)
+  - Latest live metric values (if available)
+  - A flag if this asset is currently involved in an open BlackBox incident
+
+Suggested Python structure:
+
+class TwinAssetView(BaseModel):
+    id: int
+    name: str
+    asset_code: str | None
+    asset_type: str | None
+    site_name: str | None
+    criticality: str | None
+    health: float | None
+    failure_probability: float | None
+    risk_index: float | None
+    status: Literal["disconnected","live","warning","critical","normal"]
+    data_sources: dict   # e.g. {"opcua": True, "pi": False, "external_sql": True}
+    last_updated: datetime | None
+    live_values: dict    # e.g. {"vibration_rms": 3.2, "temperature": 85}
+    has_open_incident: bool
+    open_incident_id: int | None
+
+Implement a function:
+
+def get_twin_assets_for_tenant(db, tenant_id: int) -> list[TwinAssetView]:
+    - Query Asset and Site filtered by tenant_id
+    - Join with latest AssetAIScore (use computed_at, not created_at)
+    - For each asset, use:
+        - ExternalSignalMapping to know which tags/metrics map to this asset
+        - Integrations + connectors to determine if:
+            - OPC-UA connector is configured and reachable (using OPCUA_ENDPOINT_URL)
+            - PI WebAPI connector can reach devdata.osisoft.com/piwebapi
+            - External SQL connector can reach EXTERNAL_SQL_URL
+        - For DEMO_MODE=True:
+            - You can call DemoConnector to generate realistic values.
+        - For production:
+            - Try to read at least one real value per mapped metric:
+              - OPC-UA: read node from opc.tcp://opcua.demo-this.com:51210/UA/SampleServer
+              - PI: call devdata.osisoft.com/piwebapi for a sample tag
+              - External SQL: run a simple SELECT on the public demo DB
+
+    - For each asset, compute:
+        - status = "critical" / "warning" / "normal" / "live" / "disconnected"
+          based on health, severity, and connector availability.
+        - has_open_incident based on BlackBoxIncident table
+          (filter by tenant_id, asset_id, status in ["OPEN","INVESTIGATING"]).
+
+1.3 Expose a dedicated API endpoint for the Twin page:
+
+Add to routers/twin.py:
+
+GET /api/twins/summary  (tenant-scoped, requires tenant_admin / engineer / viewer)
+
+Return JSON:
+
+{
+  "stats": {
+    "total_assets": 8,
+    "live_assets": 6,
+    "disconnected": 2,
+    "critical": 3,
+    "warning": 1,
+    "normal": 2
+  },
+  "assets": [ TwinAssetView, ... ]
+}
+
+Make sure:
+
+- All queries are filtered by tenant_id.
+- RBAC uses require_tenant_access (or similar) to enforce access.
+- No secrets are exposed (only booleans for connectivity, no passwords/tokens).
+
+====================================================
+2) FRONTEND – DIGITAL TWIN UI/UX IMPROVEMENT
+====================================================
+
+2.1 Update the Digital Twin template:
+
+Locate the current template, for example:
+
+- templates/twin/index.html
+
+Refactor it to:
+
+- Keep the existing sidebar and general layout.
+- Use a clean, modern card grid for assets.
+- Keep the existing metrics at top (Disconnected, Live Data, Critical, Warning, Normal, Total Assets), but bind them to the new /api/twins/summary endpoint via Alpine.js.
+
+Suggested structure:
+
+- Top bar:
+  - Title: "التوأم الرقمي" (Digital Twin)
+  - Subtitle: "Real-time asset visualization and monitoring"
+
+- Stat cards row:
+  - Disconnected
+  - Live Data
+  - Critical
+  - Warning
+  - Normal
+  - Total Assets
+
+Each stat should display a number from `summary.stats`.
+
+- Filter row:
+  - Dropdown: Criticality (All / Critical / High / Medium / Low)
+  - Dropdown: Asset Type (All Types / Pump / Compressor / Valve / etc.)
+  - Dropdown: Site (All Sites / per site)
+  - Text search: asset name/code
+
+- Asset cards grid:
+  - Each card shows:
+    - Asset name + asset_type
+    - Site name
+    - Criticality pill (high/medium/low) with clear color
+    - Status badge: Normal / Warning / Critical / Disconnected / Live
+    - Mini list of live values (temperature, vibration, flow…) if available
+    - Health score + failure probability (e.g. "Health 78%, Failure 12%")
+    - Small indicators of which data sources are active:
+      - OPC-UA icon (colored when active)
+      - PI icon (colored when active)
+      - DB icon (colored when active)
+    - Action links:
+      - "View Asset" → /assets/{id}
+      - If has_open_incident: "Open BlackBox" → /blackbox/incidents/{incident_id}
+        else: disabled / greyed out
+
+2.2 Frontend Data Flow (Alpine.js):
+
+Create an Alpine component on the twin page:
+
+function twinPage() {
+  return {
+    loading: true,
+    error: null,
+    stats: {...},
+    assets: [],
+    filters: {
+      criticality: 'all',
+      type: 'all',
+      site: 'all',
+      search: ''
+    },
+    async load() {
+      this.loading = true;
+      try {
+        const res = await fetch('/api/twins/summary?lang={{ lang }}');
+        const data = await res.json();
+        this.stats = data.stats;
+        this.assets = data.assets;
+        this.error = null;
+      } catch (e) {
+        this.error = 'Failed to load twin data';
+      } finally {
+        this.loading = false;
+      }
+    },
+    get filteredAssets() {
+      // return assets filtered by criticality, type, site, and search
+    }
+  }
+}
+
+- Call `load()` on page init.
+- Optionally refresh every 10–15 seconds to keep it "live" (using setInterval).
+
+2.3 Visual/UX polish:
+
+- Use Tailwind to:
+  - Add subtle shadows, rounded corners, soft background for cards.
+  - Color codes:
+    - Critical: bg-red-50 / text-red-600
+    - Warning: bg-amber-50 / text-amber-600
+    - Normal: bg-emerald-50 / text-emerald-600
+    - Disconnected: bg-gray-100 / text-gray-500
+  - Badges for data sources: small rounded pills with icons.
+- Mobile responsiveness:
+  - Ensure cards stack nicely on small screens (1 column).
+  - Filters collapse gracefully.
+
+2.4 Link with BlackBox UI:
+
+- On each asset card, if `has_open_incident` is true:
+  - Show a small banner "Open incident" with a link to the BlackBox incident details page.
+- If not, show "No active incidents" muted text.
+
+====================================================
+3) REAL DATA WIRING & DEMO DEFAULTS
+====================================================
+
+We already have secrets set:
+
+- PI_BASE_URL = https://devdata.osisoft.com/piwebapi
+- SAP_BASE_URL = https://sapmock.freeapi.io  (optional for now)
+- OPCUA_ENDPOINT_URL = opc.tcp://opcua.demo-this.com:51210/UA/SampleServer
+- EXTERNAL_SQL_URL = postgresql://samples.leantraining.ai/public_demo
+- DEMO_MODE = true
+- EXTERNAL_DB_ENABLE = true
+- OPTIMIZATION_ENGINE_ENABLED = true
+
+Implement the following behavior in the twin service:
+
+- If DEMO_MODE=true:
+  - Prefer DemoConnector for synthetic but realistic time-series values.
+  - Still try to call OPCUA/PI/SQL once to check connectivity and set data_sources flags.
+
+- If DEMO_MODE=false:
+  - Use the real connectors (OPCUAConnector, PIConnector, SQLConnector) based on the configured integrations and mappings.
+  - If a connector fails, mark that data source as unavailable for that asset, but do not crash the Twin API.
+
+Make sure all connector calls are safe and time-bounded (try/except with clear logging).
+
+====================================================
+4) TESTING & VERIFICATION
+====================================================
+
+1) Add or reuse a demo tenant (e.g. ARAMCO_DEMO) with:
+   - A couple of assets (pumps, compressors, valves).
+   - At least one ExternalSignalMapping pointing to the EXTERNAL_SQL_URL sample database.
+   - Optional mappings for PI / OPC-UA.
+
+2) Start the app and call:
+   - GET /health/ready
+   - GET /internal/config/status
+   - GET /api/twins/summary (as demo tenant_admin)
+
+3) Verify that:
+   - stats.total_assets matches the number of assets for that tenant.
+   - stats.live_assets, stats.critical, stats.warning… are computed correctly.
+   - Each asset in assets[] has:
+     - correct health and risk_index values
+     - data_sources flags reflecting which connectors are configured/reachable
+     - has_open_incident flag if there is an open BlackBox incident for this asset.
+
+4) Open the Digital Twin page in the browser:
+   - Check that cards and stats show real numbers from /api/twins/summary
+   - Filters work correctly
+   - Links to Asset page and BlackBox page work.
+
+Finally, give me a concise summary of:
+- Files created/modified
+- How to use the new Digital Twin page
+- Any limitations or todos

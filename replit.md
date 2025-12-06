@@ -159,6 +159,17 @@ python scripts/smoke_test_e2e.py  # Run tests
 
 ## Recent Changes
 
+### 2025-12-06: Digital Twin Service & Summary Endpoint
+- Created `core/twin_service.py` with structured asset aggregation
+- Added `TwinAssetView` and `TwinSummary` Pydantic models for type safety
+- Implemented `get_twin_assets_for_tenant()` for comprehensive asset status queries
+- Added `/api/twins/summary` endpoint with aggregated stats and asset list
+- Automatic BlackBox incident detection (has_open_incident flag per asset)
+- Data source connectivity tracking (OPC-UA, PI, External SQL detection)
+- Multi-tenant isolation maintained across all queries
+- RBAC enforcement on view_assets capability
+- Production-ready error handling
+
 ### 2025-12-06: Integration Data Flow & Bug Fixes
 - Added BASE_URL to config.py for global integration defaults
 - Enhanced /health/internal/config/status with PI, SAP, OPC-UA default configuration visibility
