@@ -1,0 +1,384 @@
+You are working on the existing OPTRIA IQ FastAPI + Jinja2 multi-tenant platform that is already production-ready.
+DO NOT BREAK ANY EXISTING FEATURES OR ROUTES.
+All changes must be:
+
+additive only
+
+multi-tenant safe
+
+RBAC-aware
+
+compatible with the current architecture and database schema
+
+I have already configured the following environment variables in Replit App Secrets (production Neon DB, real OpenAI key, and demo industrial backends):
+
+SESSION_SECRET
+
+DATABASE_URL
+
+PGDATABASE, PGHOST, PGPORT, PGUSER, PGPASSWORD
+
+OPENAI_API_KEY
+
+APP_ENV = production
+
+OPTIMIZATION_ENGINE_ENABLED = true
+
+EXTERNAL_DB_ENABLE = true
+
+DEMO_MODE = false
+
+PI_BASE_URL = https://devdata.osisoft.com/piwebapi
+
+SAP_BASE_URL = https://placeholder-sap.local (placeholder for now)
+
+OPCUA_USERNAME = placeholder
+
+OPCUA_PASSWORD = placeholder
+
+OPCUA_ENDPOINT_URL = opc.tcp://opcua.demo-this.com:51210/UA/SampleServer
+
+GOAL
+
+I want the platform to now behave as a real, end-to-end SaaS product with realistic integrations and full feature wiring:
+
+Tenant admin can:
+
+manage users inside his tenant (in addition to external SSO such as AD/Entra ID),
+
+configure real OPC-UA / PI demo integrations without hard-coding credentials,
+
+map external tags/signals to assets,
+
+see data reflected in:
+
+Digital Twin page,
+
+Optimization screens,
+
+Industrial Black Box (“الصندوق الأسود الصناعي”) module.
+
+Platform owner can:
+
+verify config and integration health,
+
+create demo tenants,
+
+run an end-to-end proof of concept using the public demo OPC/PI servers.
+
+CONFIG & SECRETS – WIRING CHECK
+
+Open config.py and make sure the Settings class reads exactly these environment variables with the same names:
+
+DATABASE_URL → database_url
+
+SESSION_SECRET → session_secret
+
+OPENAI_API_KEY → openai_api_key
+
+DEMO_MODE → demo_mode (bool)
+
+APP_ENV → app_env
+
+OPTIMIZATION_ENGINE_ENABLED → optimization_engine_enabled (bool)
+
+EXTERNAL_DB_ENABLE → external_db_enable (bool)
+
+PI_BASE_URL → pi_base_url
+
+SAP_BASE_URL → sap_base_url
+
+OPCUA_USERNAME → opcua_username
+
+OPCUA_PASSWORD → opcua_password
+
+OPCUA_ENDPOINT_URL → opcua_endpoint_url
+
+Keep the existing validate_required_secrets() logic, but extend the internal config diagnostics endpoint /internal/config/status to also report:
+
+whether OPC UA endpoint is configured (has_opcua_endpoint)
+
+whether PI base URL is configured
+
+whether DEMO_MODE is true/false
+
+Make sure no secrets/values are ever logged or returned in clear text. Only boolean/status flags are allowed.
+
+TENANT USER MANAGEMENT (LOCAL USERS + SSO)
+
+We already support SSO / Identity Providers per tenant.
+I now need tenant-level local user management:
+
+Extend or confirm the existing User model so that:
+
+every user has tenant_id, username, email, role, is_active, created_at.
+
+roles must be compatible with the existing RBAC matrix (tenant_admin, optimization_engineer, engineer, viewer).
+
+For tenant_admin:
+
+Add a UI page under Management → Users (tenant context) where the tenant admin can:
+
+list users in his tenant,
+
+create a new local user (username, email, role, temporary password),
+
+enable/disable a user,
+
+reset a user’s password.
+
+Enforce strict tenant isolation:
+
+tenant_admin can only see and manage users where user.tenant_id == current_user.tenant_id.
+
+Make sure:
+
+platform_owner keeps the existing global “Users” view,
+
+SSO users and local users can coexist for a tenant,
+
+nothing breaks in the current auth/login flow.
+
+DIGITAL TWIN – DEDICATED PAGE + REAL DATA
+
+The platform already has a Digital Twin concept. I want it to be a separate page connected to real asset data:
+
+Create a dedicated route and template:
+
+Route: GET /digital-twin (tenant scoped, requires login)
+
+Template: templates/digital_twin/index.html
+
+Data model:
+
+For the first version, use the existing Asset + Site models and any available asset_metrics_snapshot / AI scores for:
+
+health score,
+
+failure probability,
+
+status (normal / warning / critical).
+
+UI behavior:
+
+show a grid or map of assets, grouped by site or unit,
+
+each asset card shows:
+
+asset name,
+
+site,
+
+current health score,
+
+failure risk indicator color,
+
+clicking an asset opens its detail (existing asset detail page).
+
+Data connection:
+
+When an integration (OPC-UA / PI / SQL) is active and mapped to an asset:
+
+use the same mapping logic already implemented in ExternalSignalMapping
+
+pull the latest known value or AI score for each asset to color the twin.
+
+Add a link in the sidebar (for tenant users) labeled in Arabic:
+
+“التوأم الرقمي” → /digital-twin
+
+INDUSTRIAL BLACK BOX – DATA-AWARE WIRING
+
+The Industrial Black Box module already exists at UI level.
+Now I want it to be data-driven, connected to the new event model:
+
+Confirm / add an industrial_events (or blackbox_events) table that follows the event schema we previously defined:
+
+id, tenant_id, asset_id, source_system, source_type,
+source_id, event_time, ingest_time, severity,
+event_category, summary, payload (JSONB), plus optional context fields.
+
+Implement event collectors that:
+
+read from:
+
+internal OPTRIA tables (alerts, work_orders, AI optimization runs),
+
+external integrations via the connector layer (OPC-UA, PI, SQL),
+
+normalize each raw record into the canonical event schema,
+
+store events into the event table with tenant_id and asset_id.
+
+Wire the Black Box UI:
+
+The existing “الصندوق الأسود الصناعي” page should:
+
+show counters for:
+
+total events in last 24 hours,
+
+critical incidents,
+
+open incidents,
+
+list incidents or event groups with:
+
+incident id,
+
+title,
+
+type,
+
+severity,
+
+status,
+
+start time.
+
+Implement a simple incident grouping:
+
+When a critical alert or failure event is ingested:
+
+create or update an Incident record for that asset and time window,
+
+attach related events (alerts, operator actions, work orders) using an incident_events table.
+
+This can be basic, but must be multi-tenant safe and non-blocking.
+
+Ensure:
+
+All Black Box queries are filtered by tenant_id,
+
+RBAC:
+
+tenant_admin + reliability roles can see full details,
+
+viewer gets a read-only view.
+
+REALISTIC INTEGRATION FLOWS (OPC-UA + PI DEMO)
+
+Now that secrets are configured, connect the integration layer to them:
+
+OPC-UA connector:
+
+In core/connectors/opcua.py (or equivalent):
+
+when the tenant’s integration config does not specify endpoint_url,
+use settings.opcua_endpoint_url as a global default.
+
+when the tenant’s config does not specify username/password but the auth type requires them, use:
+
+settings.opcua_username
+
+settings.opcua_password
+
+Make sure the test_connection logic actually tries to open a secure session against the demo server and returns:
+
+success: true/false,
+
+message: short reason.
+
+PI connector:
+
+In core/connectors/pi.py, use settings.pi_base_url as the default when tenant config omits the URL.
+
+Implement a basic test_connection call against the PI WebAPI demo endpoint that verifies:
+
+HTTP connection established,
+
+returns a small piece of metadata (e.g. system info).
+
+Update /api/integrations/{id}/test endpoint:
+
+make sure it:
+
+merges tenant config + global defaults (PI_BASE_URL, OPCUA_*),
+
+calls the proper connector’s test_connection,
+
+logs the result into IntegrationActionLog,
+
+returns a clear JSON result to the frontend.
+
+On the Integrations → Data Sources page:
+
+For the Demo ARAMCO tenant:
+
+show a sample OPC-UA integration card that uses the global OPC-UA endpoint,
+
+show a sample PI integration card that uses the global PI demo URL.
+
+Keep the existing “Map / Test / Demo stream / AI Run” buttons working as before.
+
+UI POLISH & HCI IMPROVEMENTS
+
+Without changing the general layout or routes, upgrade the UI to be more modern and interactive:
+
+Apply consistent spacing, card shadows, and hover states on:
+
+Dashboard,
+
+Optimization cards,
+
+Integrations list,
+
+Black Box list,
+
+Digital Twin.
+
+For all Arabic pages:
+
+ensure correct RTL layout,
+
+text is clear, labels are human-friendly,
+
+no mixed English/Arabic unless necessary (e.g. asset IDs).
+
+Make sure assets and incidents have clickable drill-down paths:
+
+from Dashboard → Assets → Asset Detail → Digital Twin view for that asset → Black Box incidents for that asset.
+
+VERIFICATION & SAFETY
+
+At the end, do the following automatically and summarize in a final report:
+
+Run the existing scripts/smoke_test_e2e.py and fix any regressions you introduced.
+
+Add or update a small scripts/integration_smoke_test.py that:
+
+calls /internal/config/status,
+
+calls /api/integrations/ for the Demo tenant,
+
+calls /api/integrations/{id}/test for at least one OPC-UA and one PI integration,
+
+prints a short summary (success/failure).
+
+Confirm:
+
+no destructive DB migrations were added,
+
+no existing routes were removed or renamed,
+
+tenant isolation is still enforced everywhere,
+
+Black Box, Digital Twin, Optimization, and Integrations all work together end-to-end for at least one demo tenant.
+
+Produce a clear textual summary of:
+
+what you changed,
+
+which new routes/templates/tables were added,
+
+how a platform owner and a tenant admin can now run a realistic proof of concept with the OPC-UA / PI demo backends.
+
+DO NOT change the tech stack. Keep:
+
+FastAPI + Jinja2 + PostgreSQL (Neon),
+
+current directory structure,
+
+RBAC model and multi-tenant rules.
+
+All changes must be additive, safe, and production-ready.
