@@ -28,7 +28,7 @@ class TwinAssetView(BaseModel):
     last_updated: Optional[datetime] = None
     live_values: Dict[str, Any] = {}
     has_open_incident: bool = False
-    open_incident_id: Optional[int] = None
+    open_incident_id: Optional[str] = None  # UUID string
 
     class Config:
         from_attributes = True
@@ -152,15 +152,15 @@ def get_twin_assets_for_tenant(db: Session, tenant_id: int) -> tuple[List[TwinAs
         # Check for open BlackBox incidents
         open_incident = db.query(BlackBoxIncident).filter(
             BlackBoxIncident.tenant_id == tenant_id,
-            BlackBoxIncident.asset_id == asset.id,
-            BlackBoxIncident.status.in_(["open", "investigating"])
+            BlackBoxIncident.root_asset_id == asset.id,
+            BlackBoxIncident.status.in_(["open", "investigating", "OPEN", "INVESTIGATING"])
         ).order_by(BlackBoxIncident.start_time.desc()).first()
         
         # Overall status (priority: open_incident > critical > warning > normal > disconnected)
         if open_incident:
             overall_status = "critical"
             has_incident = True
-            incident_id = open_incident.id
+            incident_id = str(open_incident.id)  # UUID to string
         elif health_status == "critical":
             overall_status = "critical"
             has_incident = False

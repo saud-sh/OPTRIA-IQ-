@@ -159,6 +159,18 @@ python scripts/smoke_test_e2e.py  # Run tests
 
 ## Recent Changes
 
+### 2025-12-06: Live Time-Series API & Chart.js Visualization
+- Added `fetch_timeseries()` method to `BaseConnector` and `DemoConnector` for time-series data
+- Created `/api/twins/assets/{id}/metrics` endpoint to list available metrics per asset
+- Created `/api/twins/assets/{id}/metrics/{name}/series` endpoint for time-series data
+- Integrated Chart.js CDN for live metric visualization in Digital Twin UI
+- Enhanced Digital Twin UI with metric selection buttons and auto-refresh (15s interval)
+- Created `scripts/seed_demo_mappings.py` for ARAMCO_DEMO signal mapping seeding
+- Created `scripts/twin_smoke_test.py` for comprehensive Digital Twin API testing
+- BlackBox SENSOR events emitted on every time-series fetch for audit trail
+- 41 signal mappings created automatically for 8 demo assets
+- Fixed `BlackBoxIncident.root_asset_id` reference in twin_service.py
+
 ### 2025-12-06: Digital Twin Service & Summary Endpoint
 - Created `core/twin_service.py` with structured asset aggregation
 - Added `TwinAssetView` and `TwinSummary` Pydantic models for type safety
