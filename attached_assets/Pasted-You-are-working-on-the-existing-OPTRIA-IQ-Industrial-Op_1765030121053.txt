@@ -1,0 +1,538 @@
+You are working on the existing OPTRIA IQ – Industrial Operations Optimization Platform.
+
+VERY IMPORTANT CONSTRAINTS
+
+
+Keep the current stack: FastAPI + Jinja2 + PostgreSQL (Neon)
+
+
+NO destructive DB changes (no DROP, no ALTER that removes columns, no breaking migrations).
+
+
+Preserve multi-tenancy, RBAC, feature flags, Arabic/English support, and all existing APIs.
+
+
+Re-use existing models, routers, and templates wherever possible.
+
+
+After each change, you MUST run the existing smoke_test_e2e.py and verify /health/ready and key UI routes.
+
+
+If something will break the current behavior, STOP and propose a safer alternative.
+
+
+
+The goal of this task is to extend the current platform, NOT to rewrite it.
+
+1. Tenant User Management (local users in addition to SSO)
+1.1. Backend behavior
+
+
+Review the existing User model, RBAC, and SSO / Identity Provider logic in models/, core/auth.py, core/rbac.py, and routers/integrations.py.
+
+
+Implement a tenant-scoped user management module that allows:
+
+
+platform_owner:
+
+
+to see and manage users for any tenant.
+
+
+
+
+tenant_admin:
+
+
+to see and manage users within their own tenant only.
+
+
+
+
+
+
+For each tenant, support local users even if SSO (Azure AD / Okta / Google) is configured:
+
+
+Local users are stored in the same users table, with:
+
+
+tenant_id
+
+
+username / email
+
+
+role
+
+
+active status
+
+
+optional flag like auth_source ("local" vs "sso") – ADDITIVE ONLY.
+
+
+
+
+
+
+Implement secured API endpoints (or extend existing ones) such as:
+
+
+GET /api/tenant-users – list users for the current tenant
+
+
+POST /api/tenant-users – create a new local user in current tenant
+
+
+GET /api/tenant-users/{id} – get details (must belong to same tenant)
+
+
+PUT /api/tenant-users/{id} – update role, active flag
+
+
+POST /api/tenant-users/{id}/reset-password – generate/reset password (or mark that tenant must send new password)
+
+
+Requirements:
+
+
+All endpoints MUST use require_tenant_access or equivalent RBAC protection.
+
+
+platform_owner can bypass tenant_id, but responses must still be tenant-scoped and safe.
+
+
+Never expose password hashes; handle passwords like existing auth.
+
+
+
+
+1.2. Frontend (UI)
+
+
+Create/verify a Tenant User Management section accessible from the sidebar:
+
+
+For platform_owner: under Management → Users
+
+
+For tenant_admin: a Users menu item under their tenant section.
+
+
+
+
+UI requirements (Jinja2 + Tailwind + Alpine.js, Arabic first, English via ?lang=en):
+
+
+Users List page:
+
+
+Table with: Name, Email/Username, Role, Status (Active/Inactive), Auth Source (Local/SSO), Actions.
+
+
+Actions: View / Edit, Reset Password, Deactivate/Activate.
+
+
+
+
+User Create/Edit page or modal:
+
+
+Fields: Name, Email/Username, Role (dropdown restricted by RBAC), Active flag.
+
+
+For SSO users (if supported later), show them as read-only; for now focus on local users.
+
+
+
+
+All texts must use the existing translation mechanism (get_translation(lang, ...)).
+
+
+
+
+Ensure all new routes/templates extend app_base.html and match the current design.
+
+
+
+2. Digital Twin – dedicated page tightly linked to Assets & Integrations
+We already have assets, metrics, AI scores, and a basic twin concept. Now we want a clear, standalone Digital Twin page per tenant, connected to asset data and integrations.
+2.1. Backend
+
+
+Add a route like:
+
+
+GET /digital-twin – for the current tenant.
+
+
+
+
+Data that the twin needs (via a dedicated helper or existing APIs):
+For the current tenant:
+
+
+List of active sites and assets (with asset_id, name, asset_type, criticality, site, etc.).
+
+
+For each asset:
+
+
+Latest health score / failure probability / status if available.
+
+
+Any mapped external signals (via external_signal_mappings and integrations).
+
+
+
+
+Optional simple layout info (e.g. site/unit/line) to group assets visually.
+
+
+
+
+If the tenant has added external databases or historians and configured signal mappings, compute an “is_data_connected” flag per asset, so the Digital Twin can show:
+
+
+Asset has live data (connected)
+
+
+Asset has only demo data
+
+
+Asset has no data yet
+
+
+
+
+2.2. Frontend (Digital Twin UI)
+
+
+Create templates/digital_twin/index.html:
+
+
+Full-screen layout using Tailwind + Alpine.js.
+
+
+Main components:
+
+
+Filter bar (Site, Unit/Area, Asset type, Criticality).
+
+
+Canvas/grid of assets (cards or simple block map):
+
+
+Color by status (Normal / Warning / Critical / Unknown).
+
+
+Icon for data connectivity (e.g. “Live / Demo / Disconnected”).
+
+
+
+
+Side panel that shows when you click an asset:
+
+
+Asset metadata (site, type, criticality).
+
+
+Latest metrics (health score, failure probability, key sensor values).
+
+
+Shortcut buttons: “Open Asset Details” → existing asset page, “Open Black Box incidents for this asset”.
+
+
+
+
+
+
+
+
+Add Digital Twin to the sidebar navigation:
+
+
+For tenant_admin, optimization_engineer, engineer, and viewer.
+
+
+Use Arabic/English labels via translations.
+
+
+
+
+Ensure the Twin uses the same language toggle (AR/EN) and visual style as the rest of the app.
+
+
+
+3. Industrial Black Box – data-aware, tenant-specific & UI improvements
+You already implemented the core of the Black Box (events/incidents/RCA concepts). We now want to:
+
+
+Make sure it detects the tenant’s data sources and types based on integrations and mappings.
+
+
+Provide clear, interactive UI pages.
+
+
+Ensure integration with Assets and Digital Twin.
+
+
+3.1. Backend verification & enhancements
+
+
+Review the current Black Box implementation (models, routers, templates).
+If some pieces are missing, create them according to the previous “Industrial Black Box Layer” spec (events, incidents, timelines, basic rule-based RCA).
+
+
+Add logic so that, for each tenant:
+
+
+When an integration is configured and signal mappings exist, incoming data (alerts, work orders, metrics) are normalized into Events with:
+
+
+tenant_id, asset_id, event_time, event_category, source_system, payload, …
+
+
+
+
+Event categories should adapt to the data:
+
+
+Sensors / tags → SENSOR
+
+
+Alerts / alarms → ALERT
+
+
+Work orders → MAINTENANCE
+
+
+Operator actions (if present) → OPERATOR_ACTION
+
+
+
+
+Black Box services must be read-only with respect to OT — they only read from OPTRIA DB and connectors.
+
+
+
+
+Ensure that Black Box APIs allow:
+
+
+Listing events by tenant / asset / time range.
+
+
+Listing incidents.
+
+
+Getting incident details and its timeline.
+
+
+
+
+Connect Black Box with Assets and Digital Twin:
+
+
+From an asset: you can query related incidents and events.
+
+
+From Digital Twin: the side panel for a selected asset should be able to link to Black Box incidents.
+
+
+
+
+3.2. Black Box UI (improve clarity & interaction)
+
+
+Improve or create these pages (all bilingual, extending app_base.html):
+
+
+Black Box Dashboard page (e.g. /blackbox):
+
+
+Filters: time range, severity, incident type, status.
+
+
+Counters: total incidents, critical incidents, open incidents, events in last 24h.
+
+
+Table of recent incidents with: ID, asset, type, severity, status, start time, actions.
+
+
+
+
+Incident Detail page:
+
+
+Top area: summary (type, severity, root asset, start/end, status).
+
+
+Middle area: Timeline / event ladder (ordered events, color by category).
+
+
+Side area: RCA summary (root cause hypothesis, contributing factors, recommendations).
+
+
+Buttons: “Open in Digital Twin at time T”, “View related work order”.
+
+
+
+
+
+
+Use Tailwind + Alpine.js to:
+
+
+Provide a clear timeline playback (step through events, auto-scroll).
+
+
+Provide loading states, empty states, and user feedback.
+
+
+Keep performance reasonable (paginate/limit events).
+
+
+
+
+Make sure Black Box pages respect RBAC:
+
+
+Reliability/optimization roles see full technical detail.
+
+
+Basic viewer roles see a simplified view (but you don’t need complex masking logic now; just enforce standard RBAC).
+
+
+
+
+
+4. General UI/UX improvements (without breaking flows)
+
+
+Go through the main templates:
+
+
+dashboard/, optimization/, assets/, integrations/, work_orders/, blackbox/, onboarding/, tenants/.
+
+
+
+
+Apply consistent UI styling:
+
+
+Use Tailwind utilities already loaded (spacing, typography, shadows, rounded corners).
+
+
+Ensure cards, tables, and buttons share consistent spacing, fonts, and colors.
+
+
+Keep the current structure, routes, and text — only polish the visual appearance and layout.
+
+
+
+
+Ensure mobile responsiveness for key pages:
+
+
+Dashboard
+
+
+Digital Twin (simplified layout on small screens)
+
+
+Black Box Dashboard & Incident detail
+
+
+Tenant user management
+
+
+
+
+DO NOT remove existing elements or navigation; just improve their presentation.
+
+5. Validation & Self-Check
+After you implement the changes above:
+
+
+Run automated checks:
+
+
+python scripts/smoke_test_e2e.py
+
+
+Verify it passes and update it only if necessary (additive changes for new routes/models only).
+
+
+
+
+Verify health & secrets:
+
+
+/health/ready returns OK.
+
+
+/internal/config/status works for platform_owner.
+
+
+
+
+Manual UI testing (describe in the final summary):
+
+
+As platform_owner:
+
+
+Create a new tenant.
+
+
+Open Tenant Users page, create a local user, assign a role.
+
+
+
+
+As tenant_admin:
+
+
+Log in, manage users for own tenant.
+
+
+Configure at least one integration and mapping.
+
+
+Open Digital Twin, confirm assets appear with connectivity status.
+
+
+Open Black Box, run detection/replay for a demo incident.
+
+
+
+
+
+
+Provide a final technical summary in the chat covering:
+
+
+Files changed.
+
+
+New models/endpoints/templates created.
+
+
+How tenant user management works.
+
+
+How Digital Twin is wired to assets & integrations.
+
+
+How Black Box detects data per tenant and how the UIs interact with it.
+
+
+Confirmation that no destructive DB operations were introduced and all tests/health checks pass.
+
+
+
+
+Do NOT change authentication model, existing demo accounts, or core optimization logic. Focus only on extending the platform as specified above, in a safe, additive way.
