@@ -539,9 +539,9 @@ async def get_asset_detail(
     from models.blackbox import BlackBoxIncident
     incidents = db.query(BlackBoxIncident).filter(
         BlackBoxIncident.tenant_id == tenant_id,
-        BlackBoxIncident.asset_id == asset_id,
+        BlackBoxIncident.root_asset_id == asset_id,
         BlackBoxIncident.status.in_(["open", "investigating"])
-    ).order_by(BlackBoxIncident.started_at.desc()).limit(5).all()
+    ).order_by(BlackBoxIncident.start_time.desc()).limit(5).all()
     
     return {
         "asset": {
@@ -562,7 +562,7 @@ async def get_asset_detail(
             "failure_probability": ai_score.failure_probability if ai_score else None,
             "remaining_useful_life_days": ai_score.remaining_useful_life_days if ai_score else None,
             "anomaly_score": ai_score.anomaly_score if ai_score else None,
-            "last_updated": ai_score.created_at.isoformat() if ai_score else None
+            "last_updated": ai_score.computed_at.isoformat() if ai_score else None
         },
         "signal_mappings": [
             {

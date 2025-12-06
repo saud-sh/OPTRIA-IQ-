@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     opcua_password: str = os.getenv("OPCUA_PASSWORD", "")
     opcua_endpoint_url: str = os.getenv("OPCUA_ENDPOINT_URL", "")
     
+    # Application URLs
+    base_url: str = os.getenv("BASE_URL", "https://optria.rocktech.sa")
+    
     # App settings
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24

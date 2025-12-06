@@ -118,6 +118,11 @@ async def internal_config_status(
                 "source": "OPCUA_ENDPOINT_URL secret",
                 "has_opcua_endpoint": bool(settings.opcua_endpoint_url)
             },
+            "base_url": {
+                "status": "configured" if settings.base_url else "empty",
+                "source": "BASE_URL environment variable",
+                "base_url_configured": bool(settings.base_url)
+            },
             "demo_mode": {
                 "status": "enabled" if settings.demo_mode else "disabled",
                 "source": f"DEMO_MODE={settings.demo_mode}",

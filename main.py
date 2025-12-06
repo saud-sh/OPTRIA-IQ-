@@ -16,6 +16,7 @@ from models.user import User
 from models.asset import Asset, Site, AssetAIScore
 from models.optimization import OptimizationRun, OptimizationRecommendation, WorkOrder
 from models.blackbox import BlackBoxEvent, BlackBoxIncident, BlackBoxIncidentEvent, BlackBoxRCARule, TwinLayout, TwinNode
+from models.integration import TenantIntegration, ExternalSignalMapping, TenantCostModel
 from core.auth import get_current_user_optional, get_password_hash
 from translations import get_translation, t
 
@@ -52,8 +53,24 @@ def init_db():
         
         if settings.demo_mode:
             seed_demo_data(db)
+            seed_existing_demo_tenant(db)
     finally:
         db.close()
+
+def seed_existing_demo_tenant(db: Session):
+    """Seed integrations for existing ARAMCO_DEMO tenant if it exists but has no integrations"""
+    demo_tenant = db.query(Tenant).filter(Tenant.code == "ARAMCO_DEMO").first()
+    if not demo_tenant:
+        print("ARAMCO_DEMO tenant not found, skipping integration seeding")
+        return
+    
+    existing_integrations = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == demo_tenant.id
+    ).count()
+    
+    if existing_integrations == 0:
+        print(f"Seeding demo integrations for existing tenant {demo_tenant.code}...")
+        seed_demo_integrations(db, demo_tenant)
 
 def seed_demo_data(db: Session):
     demo_tenant = db.query(Tenant).filter(Tenant.code == "ARAMCO_DEMO").first()
@@ -142,6 +159,298 @@ def seed_demo_data(db: Session):
     
     db.commit()
     print("Demo data seeded successfully")
+    
+    seed_demo_integrations(db, demo_tenant)
+
+def seed_demo_integrations(db: Session, tenant: Tenant):
+    """Seed demo integrations for a tenant - idempotent"""
+    existing_opcua = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant.id,
+        TenantIntegration.integration_type == "opcua"
+    ).first()
+    
+    existing_pi = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant.id,
+        TenantIntegration.integration_type == "pi"
+    ).first()
+    
+    existing_demo = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant.id,
+        TenantIntegration.integration_type == "demo"
+    ).first()
+    
+    if not existing_opcua:
+        opcua_integration = TenantIntegration(
+            tenant_id=tenant.id,
+            name="Demo OPC-UA - ARAMCO",
+            integration_type="opcua",
+            status="active",
+            config={
+                "endpoint_url": settings.opcua_endpoint_url or "opc.tcp://demo-server:4840",
+                "security_mode": "None",
+                "security_policy": "None",
+                "auth_type": "Anonymous",
+                "namespace_filter": "ns=2;s=",
+                "sampling_interval_ms": 1000,
+                "max_tags_per_scan": 500,
+                "time_zone": "Asia/Riyadh",
+                "is_demo": True
+            },
+            is_active=True,
+            demo_stream_active=True
+        )
+        db.add(opcua_integration)
+        print(f"  Created Demo OPC-UA integration for {tenant.code}")
+    
+    if not existing_pi:
+        pi_integration = TenantIntegration(
+            tenant_id=tenant.id,
+            name="Demo PI System - ARAMCO",
+            integration_type="pi",
+            status="active",
+            config={
+                "pi_webapi_url": settings.pi_base_url or "https://demo-pi-server/piwebapi",
+                "auth_type": "Basic",
+                "username": "",
+                "password": "",
+                "af_database_path": "\\\\PI-Server\\ARAMCO-Demo",
+                "tag_filter": "ARAMCO.*",
+                "sync_mode": "last_24h",
+                "time_zone": "Asia/Riyadh",
+                "is_demo": True
+            },
+            is_active=True,
+            demo_stream_active=True
+        )
+        db.add(pi_integration)
+        print(f"  Created Demo PI System integration for {tenant.code}")
+    
+    if not existing_demo:
+        demo_integration = TenantIntegration(
+            tenant_id=tenant.id,
+            name="Demo Data Generator - ARAMCO",
+            integration_type="demo",
+            status="active",
+            config={
+                "data_frequency_seconds": 30,
+                "num_tags": 50,
+                "anomaly_probability": 0.05,
+                "is_demo": True
+            },
+            is_active=True,
+            demo_stream_active=True
+        )
+        db.add(demo_integration)
+        print(f"  Created Demo Data Generator for {tenant.code}")
+    
+    existing_cost_model = db.query(TenantCostModel).filter(
+        TenantCostModel.tenant_id == tenant.id,
+        TenantCostModel.is_active == True
+    ).first()
+    
+    if not existing_cost_model:
+        cost_model = TenantCostModel(
+            tenant_id=tenant.id,
+            name="ARAMCO Default Cost Model",
+            description="Standard cost model for oil & gas operations",
+            default_downtime_cost_per_hour=25000,
+            risk_appetite="medium",
+            cost_per_asset_family={
+                "pump": 8000,
+                "compressor": 20000,
+                "valve": 3000,
+                "motor": 12000,
+                "turbine": 35000,
+                "heat_exchanger": 15000,
+                "separator": 18000
+            },
+            production_value_per_unit=50000,
+            currency="SAR",
+            is_active=True
+        )
+        db.add(cost_model)
+        print(f"  Created default cost model for {tenant.code}")
+    
+    db.commit()
+    
+    seed_demo_signal_mappings(db, tenant)
+    seed_demo_ai_scores(db, tenant)
+    seed_demo_blackbox_data(db, tenant)
+
+def seed_demo_signal_mappings(db: Session, tenant: Tenant):
+    """Seed demo signal mappings connecting assets to integrations"""
+    demo_integration = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant.id,
+        TenantIntegration.integration_type == "demo",
+        TenantIntegration.is_active == True
+    ).first()
+    
+    if not demo_integration:
+        return
+    
+    assets = db.query(Asset).filter(Asset.tenant_id == tenant.id).all()
+    
+    for asset in assets:
+        existing_mapping = db.query(ExternalSignalMapping).filter(
+            ExternalSignalMapping.tenant_id == tenant.id,
+            ExternalSignalMapping.asset_id == asset.id,
+            ExternalSignalMapping.integration_id == demo_integration.id
+        ).first()
+        
+        if not existing_mapping:
+            metrics = [
+                {"tag": f"{asset.code}.Temperature", "metric": "temperature", "unit": "°C"},
+                {"tag": f"{asset.code}.Pressure", "metric": "pressure", "unit": "bar"},
+                {"tag": f"{asset.code}.Vibration", "metric": "vibration", "unit": "mm/s"},
+                {"tag": f"{asset.code}.Current", "metric": "current", "unit": "A"},
+            ]
+            
+            for m in metrics:
+                mapping = ExternalSignalMapping(
+                    tenant_id=tenant.id,
+                    integration_id=demo_integration.id,
+                    asset_id=asset.id,
+                    external_tag=m["tag"],
+                    internal_metric_name=m["metric"],
+                    unit=m["unit"],
+                    scaling_factor=1.0,
+                    offset_value=0.0,
+                    is_active=True
+                )
+                db.add(mapping)
+    
+    db.commit()
+    print(f"  Created signal mappings for {len(assets)} assets in {tenant.code}")
+
+def seed_demo_ai_scores(db: Session, tenant: Tenant):
+    """Generate demo AI scores for assets"""
+    import random
+    from datetime import datetime
+    
+    assets = db.query(Asset).filter(Asset.tenant_id == tenant.id).all()
+    
+    for asset in assets:
+        existing_score = db.query(AssetAIScore).filter(
+            AssetAIScore.tenant_id == tenant.id,
+            AssetAIScore.asset_id == asset.id
+        ).first()
+        
+        if not existing_score:
+            if asset.criticality == "critical":
+                health = random.uniform(60, 85)
+                failure_prob = random.uniform(0.05, 0.15)
+                rul = random.randint(30, 90)
+            elif asset.criticality == "high":
+                health = random.uniform(70, 92)
+                failure_prob = random.uniform(0.02, 0.08)
+                rul = random.randint(60, 180)
+            else:
+                health = random.uniform(80, 98)
+                failure_prob = random.uniform(0.01, 0.04)
+                rul = random.randint(120, 365)
+            
+            ai_score = AssetAIScore(
+                tenant_id=tenant.id,
+                asset_id=asset.id,
+                health_score=round(health, 2),
+                failure_probability=round(failure_prob, 4),
+                remaining_useful_life_days=rul,
+                production_risk_index=round(random.uniform(10, 50), 2),
+                anomaly_detected=random.random() < 0.1,
+                anomaly_details={"type": "vibration_spike", "severity": "low"} if random.random() < 0.1 else None,
+                model_version="v1.0-demo"
+            )
+            db.add(ai_score)
+    
+    db.commit()
+    print(f"  Created AI scores for {len(assets)} assets in {tenant.code}")
+
+def seed_demo_blackbox_data(db: Session, tenant: Tenant):
+    """Seed demo Black Box events and incidents"""
+    import random
+    import uuid
+    from datetime import timedelta
+    
+    existing_events = db.query(BlackBoxEvent).filter(
+        BlackBoxEvent.tenant_id == tenant.id
+    ).count()
+    
+    if existing_events > 0:
+        return
+    
+    assets = db.query(Asset).filter(Asset.tenant_id == tenant.id).all()
+    if not assets:
+        return
+    
+    event_templates = [
+        {"source": "OPC-UA", "source_type": "SENSOR", "category": "THRESHOLD", "severity": "WARNING", "summary": "Temperature above threshold"},
+        {"source": "OPC-UA", "source_type": "SENSOR", "category": "ANOMALY", "severity": "CRITICAL", "summary": "Vibration spike detected"},
+        {"source": "PI_SYSTEM", "source_type": "HISTORIAN", "category": "ALERT", "severity": "INFO", "summary": "Maintenance scheduled"},
+        {"source": "PI_SYSTEM", "source_type": "HISTORIAN", "category": "THRESHOLD", "severity": "WARNING", "summary": "Pressure deviation"},
+        {"source": "AI_ENGINE", "source_type": "AI", "category": "PREDICTION", "severity": "CRITICAL", "summary": "Predicted failure in 7 days"},
+        {"source": "CMMS", "source_type": "WORK_ORDER", "category": "MAINTENANCE", "severity": "INFO", "summary": "PM completed"},
+    ]
+    
+    now = datetime.utcnow()
+    events_created = []
+    
+    for i in range(20):
+        template = random.choice(event_templates)
+        asset = random.choice(assets)
+        event_time = now - timedelta(hours=random.randint(1, 72))
+        
+        event = BlackBoxEvent(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            asset_id=asset.id,
+            source_system=template["source"],
+            source_type=template["source_type"],
+            event_category=template["category"],
+            event_time=event_time,
+            severity=template["severity"],
+            summary=template["summary"],
+            payload={
+                "asset_code": asset.code,
+                "asset_name": asset.name,
+                "raw_value": round(random.uniform(50, 150), 2),
+                "threshold": 100,
+                "is_demo": True
+            }
+        )
+        db.add(event)
+        events_created.append(event)
+    
+    db.flush()
+    
+    critical_events = [e for e in events_created if e.severity == "CRITICAL"]
+    if critical_events:
+        incident = BlackBoxIncident(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            incident_number=f"INC-{tenant.code[:3]}-001",
+            root_asset_id=critical_events[0].asset_id,
+            incident_type="FAILURE",
+            severity="MAJOR",
+            status="INVESTIGATING",
+            title="Critical Asset Health Alert",
+            description="Multiple critical events detected on asset requiring investigation",
+            start_time=critical_events[0].event_time,
+            rca_status="PENDING"
+        )
+        db.add(incident)
+        db.flush()
+        
+        for event in critical_events[:3]:
+            incident_event = BlackBoxIncidentEvent(
+                tenant_id=tenant.id,
+                incident_id=incident.id,
+                event_id=event.id,
+                role="CAUSE" if event == critical_events[0] else "SYMPTOM"
+            )
+            db.add(incident_event)
+    
+    db.commit()
+    print(f"  Created {len(events_created)} Black Box events and 1 incident for {tenant.code}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
