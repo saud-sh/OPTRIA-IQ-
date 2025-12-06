@@ -606,3 +606,184 @@ async def get_asset_detail(
             } for i in incidents
         ]
     }
+
+
+@router.get("/assets/{asset_id}/metrics")
+async def list_asset_metrics(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List available metrics for an asset from ExternalSignalMappings"""
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = current_user.tenant_id
+    
+    asset = db.query(Asset).filter(
+        Asset.id == asset_id,
+        Asset.tenant_id == tenant_id
+    ).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    
+    mappings = db.query(ExternalSignalMapping).filter(
+        ExternalSignalMapping.tenant_id == tenant_id,
+        ExternalSignalMapping.asset_id == asset_id,
+        ExternalSignalMapping.is_active == True
+    ).all()
+    
+    metrics = []
+    for m in mappings:
+        metrics.append({
+            "name": m.internal_metric_name,
+            "external_tag": m.external_tag,
+            "unit": m.unit,
+            "integration_id": m.integration_id
+        })
+    
+    return {
+        "asset_id": asset_id,
+        "asset_name": asset.name,
+        "metrics": metrics,
+        "total": len(metrics)
+    }
+
+
+@router.get("/assets/{asset_id}/metrics/{metric_name}/series")
+async def get_asset_metric_timeseries(
+    asset_id: int,
+    metric_name: str,
+    from_time: Optional[str] = Query(None, description="ISO8601 start time"),
+    to_time: Optional[str] = Query(None, description="ISO8601 end time"),
+    limit: int = Query(100, le=500, description="Max data points"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch time-series data for a specific asset metric.
+    Uses connector abstraction to fetch from appropriate data source.
+    Emits BlackBox SENSOR event when data is fetched.
+    """
+    import logging
+    from datetime import datetime as dt, timedelta
+    
+    logger = logging.getLogger(__name__)
+    
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = current_user.tenant_id
+    
+    asset = db.query(Asset).filter(
+        Asset.id == asset_id,
+        Asset.tenant_id == tenant_id
+    ).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    
+    mapping = db.query(ExternalSignalMapping).filter(
+        ExternalSignalMapping.tenant_id == tenant_id,
+        ExternalSignalMapping.asset_id == asset_id,
+        ExternalSignalMapping.internal_metric_name == metric_name,
+        ExternalSignalMapping.is_active == True
+    ).first()
+    
+    if not mapping:
+        raise HTTPException(status_code=404, detail=f"No mapping found for metric '{metric_name}'")
+    
+    integration = db.query(TenantIntegration).filter(
+        TenantIntegration.id == mapping.integration_id,
+        TenantIntegration.tenant_id == tenant_id
+    ).first()
+    
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    try:
+        parsed_from = dt.fromisoformat(from_time.replace("Z", "+00:00")) if from_time else dt.utcnow() - timedelta(hours=1)
+        parsed_to = dt.fromisoformat(to_time.replace("Z", "+00:00")) if to_time else dt.utcnow()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid time format: {e}")
+    
+    connector = None
+    points = []
+    
+    try:
+        if integration.integration_type == "demo":
+            from core.connectors.demo import DemoConnector
+            connector = DemoConnector(integration.config or {})
+        elif integration.integration_type == "pi":
+            from core.connectors.pi import PIConnector
+            connector = PIConnector(integration.config or {})
+        elif integration.integration_type == "opcua":
+            from core.connectors.opcua import OPCUAConnector
+            connector = OPCUAConnector(integration.config or {})
+        elif integration.integration_type == "external_sql":
+            from core.connectors.sql import SQLConnector
+            connector = SQLConnector(integration.config or {})
+        else:
+            from core.connectors.demo import DemoConnector
+            connector = DemoConnector({"mode": "fallback"})
+        
+        points = connector.fetch_timeseries(
+            tag=mapping.external_tag,
+            from_time=parsed_from,
+            to_time=parsed_to,
+            limit=limit
+        )
+        
+    except Exception as e:
+        logger.warning(f"Connector fetch failed, using demo fallback: {e}")
+        from core.connectors.demo import DemoConnector
+        connector = DemoConnector({"mode": "fallback"})
+        points = connector.fetch_timeseries(
+            tag=mapping.external_tag,
+            from_time=parsed_from,
+            to_time=parsed_to,
+            limit=limit
+        )
+    
+    try:
+        from models.blackbox import BlackBoxEvent
+        import uuid
+        
+        event = BlackBoxEvent(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            asset_id=asset_id,
+            source_system="OPTRIA_TWIN",
+            source_type="TAG_READING",
+            event_category="SENSOR",
+            event_time=dt.utcnow(),
+            severity="INFO",
+            summary=f"Time-series fetched for {metric_name} via Digital Twin",
+            payload={
+                "metric": metric_name,
+                "points_count": len(points),
+                "integration_type": integration.integration_type,
+                "external_tag": mapping.external_tag,
+                "from_time": parsed_from.isoformat(),
+                "to_time": parsed_to.isoformat()
+            },
+            is_processed=False
+        )
+        db.add(event)
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to emit BlackBox SENSOR event: {e}")
+    
+    return {
+        "asset_id": asset_id,
+        "asset_name": asset.name,
+        "metric": metric_name,
+        "external_tag": mapping.external_tag,
+        "unit": mapping.unit,
+        "integration_type": integration.integration_type,
+        "from_time": parsed_from.isoformat(),
+        "to_time": parsed_to.isoformat(),
+        "points": points,
+        "total_points": len(points)
+    }

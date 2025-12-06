@@ -2,6 +2,10 @@
 
 {% block page_title %}{{ t.get('nav_digital_twin', 'Digital Twin') }}{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div x-data="digitalTwin()" x-init="init()" class="h-full">
     <div class="mb-6">
@@ -11,6 +15,12 @@
                 <p class="text-gray-600">{{ t.get('twin_view_desc', 'Real-time asset visualization and monitoring') }}</p>
             </div>
             <div class="flex gap-2">
+                <button @click="loadAssets()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    {{ t.get('refresh', 'Refresh') }}
+                </button>
                 <a href="/twins?lang={{ lang }}" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
                     {{ t.get('manage_layouts', 'Manage Layouts') }}
                 </a>
@@ -71,6 +81,11 @@
                     <option value="low">{{ t.get('low', 'Low') }}</option>
                 </select>
             </div>
+            <div class="flex-1">
+                <input type="text" x-model="filters.search" @input="filterAssets()" 
+                       placeholder="{{ t.get('search_assets', 'Search assets...') }}"
+                       class="w-full px-4 py-2 border rounded-lg">
+            </div>
         </div>
     </div>
     
@@ -81,12 +96,12 @@
                     <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
                 
-                <div x-show="!loading && assets.length === 0" class="flex items-center justify-center h-64 text-gray-500">
+                <div x-show="!loading && filteredAssets.length === 0" class="flex items-center justify-center h-64 text-gray-500">
                     {{ t.get('no_assets', 'No assets found') }}
                 </div>
                 
-                <div x-show="!loading && assets.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    <template x-for="asset in assets" :key="asset.id">
+                <div x-show="!loading && filteredAssets.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    <template x-for="asset in filteredAssets" :key="asset.id">
                         <div @click="selectAsset(asset)" 
                              class="relative bg-white rounded-xl p-4 shadow-sm border-2 cursor-pointer hover:shadow-md transition"
                              :class="{
@@ -151,8 +166,8 @@
             </div>
         </div>
         
-        <div x-show="selectedAsset" x-transition class="w-80 bg-white rounded-xl shadow-sm border overflow-hidden flex-shrink-0">
-            <div class="p-4 border-b flex items-center justify-between"
+        <div x-show="selectedAsset" x-transition class="w-96 bg-white rounded-xl shadow-sm border overflow-hidden flex-shrink-0 max-h-[calc(100vh-200px)] overflow-y-auto">
+            <div class="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10"
                  :class="{
                      'bg-green-50': assetDetail && assetDetail.health && assetDetail.health.health_score >= 80,
                      'bg-yellow-50': assetDetail && assetDetail.health && assetDetail.health.health_score >= 50 && assetDetail.health.health_score < 80,
@@ -160,7 +175,7 @@
                      'bg-gray-50': !assetDetail || !assetDetail.health || assetDetail.health.health_score === null
                  }">
                 <h3 class="font-semibold text-gray-900" x-text="selectedAsset?.name"></h3>
-                <button @click="selectedAsset = null; assetDetail = null" class="p-1 hover:bg-gray-200 rounded">
+                <button @click="closePanel()" class="p-1 hover:bg-gray-200 rounded">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -221,18 +236,49 @@
                     </div>
                 </div>
                 
-                <div class="p-4" x-show="assetDetail?.signal_mappings?.length > 0">
-                    <p class="text-xs text-gray-500 mb-2">{{ t.get('data_connections', 'Data Connections') }}</p>
-                    <div class="space-y-2">
-                        <template x-for="mapping in assetDetail?.signal_mappings" :key="mapping.id">
-                            <div class="flex items-center gap-2 text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
-                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <circle cx="10" cy="10" r="4"/>
-                                </svg>
-                                <span x-text="mapping.internal_metric_name"></span>
-                            </div>
+                <div class="p-4" x-show="metrics.length > 0">
+                    <p class="text-xs text-gray-500 mb-2">{{ t.get('live_metrics', 'Live Metrics') }}</p>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        <template x-for="metric in metrics" :key="metric.name">
+                            <button @click="selectMetric(metric.name)"
+                                    class="px-3 py-1 text-xs rounded-full border transition"
+                                    :class="selectedMetric === metric.name ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'">
+                                <span x-text="metric.name"></span>
+                            </button>
                         </template>
                     </div>
+                    
+                    <div x-show="selectedMetric" class="mt-4">
+                        <div x-show="loadingTimeseries" class="flex items-center justify-center h-32">
+                            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        </div>
+                        
+                        <div x-show="!loadingTimeseries && timeseries.points && timeseries.points.length > 0">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium text-gray-700" x-text="selectedMetric"></span>
+                                <span class="text-lg font-bold text-blue-600">
+                                    <span x-text="latestValue"></span>
+                                    <span class="text-xs text-gray-500" x-text="timeseries.unit || ''"></span>
+                                </span>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-2" style="height: 180px;">
+                                <canvas id="metricsChart"></canvas>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1 text-center">
+                                {{ t.get('last_n_points', 'Last') }} <span x-text="timeseries.total_points || 0"></span> {{ t.get('data_points', 'data points') }}
+                            </p>
+                        </div>
+                        
+                        <div x-show="!loadingTimeseries && (!timeseries.points || timeseries.points.length === 0)" 
+                             class="text-center text-gray-500 py-8 text-sm">
+                            {{ t.get('no_timeseries_data', 'No time-series data available') }}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-4" x-show="metrics.length === 0 && !loadingMetrics">
+                    <p class="text-xs text-gray-500 mb-2">{{ t.get('data_connections', 'Data Connections') }}</p>
+                    <p class="text-sm text-gray-400 italic">{{ t.get('no_signal_mappings', 'No signal mappings configured') }}</p>
                 </div>
                 
                 <div class="p-4" x-show="assetDetail?.recent_incidents?.length > 0">
@@ -274,11 +320,42 @@ function digitalTwin() {
         filters: {
             site_id: '',
             asset_type: '',
-            criticality: ''
+            criticality: '',
+            search: ''
+        },
+        metrics: [],
+        loadingMetrics: false,
+        selectedMetric: null,
+        timeseries: {},
+        loadingTimeseries: false,
+        chart: null,
+        
+        get filteredAssets() {
+            if (!this.filters.search) return this.assets;
+            const search = this.filters.search.toLowerCase();
+            return this.assets.filter(a => 
+                (a.name && a.name.toLowerCase().includes(search)) ||
+                (a.code && a.code.toLowerCase().includes(search)) ||
+                (a.asset_type && a.asset_type.toLowerCase().includes(search))
+            );
+        },
+        
+        get latestValue() {
+            if (!this.timeseries.points || this.timeseries.points.length === 0) return '--';
+            const last = this.timeseries.points[this.timeseries.points.length - 1];
+            return last.value !== undefined ? last.value.toFixed(2) : '--';
         },
         
         async init() {
             await this.loadAssets();
+            setInterval(() => {
+                if (this.selectedMetric && this.selectedAsset) {
+                    this.loadTimeseries(this.selectedMetric);
+                }
+            }, 15000);
+        },
+        
+        filterAssets() {
         },
         
         async loadAssets() {
@@ -305,14 +382,145 @@ function digitalTwin() {
         async selectAsset(asset) {
             this.selectedAsset = asset;
             this.loadingDetail = true;
+            this.metrics = [];
+            this.selectedMetric = null;
+            this.timeseries = {};
             
             try {
                 const res = await fetch('/api/twins/assets/' + asset.id);
                 this.assetDetail = await res.json();
+                
+                await this.loadMetrics(asset.id);
             } catch (e) {
                 console.error('Failed to load asset detail:', e);
             } finally {
                 this.loadingDetail = false;
+            }
+        },
+        
+        async loadMetrics(assetId) {
+            this.loadingMetrics = true;
+            try {
+                const res = await fetch('/api/twins/assets/' + assetId + '/metrics');
+                if (res.ok) {
+                    const data = await res.json();
+                    this.metrics = data.metrics || [];
+                    
+                    if (this.metrics.length > 0) {
+                        await this.selectMetric(this.metrics[0].name);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load metrics:', e);
+            } finally {
+                this.loadingMetrics = false;
+            }
+        },
+        
+        async selectMetric(metricName) {
+            this.selectedMetric = metricName;
+            await this.loadTimeseries(metricName);
+        },
+        
+        async loadTimeseries(metricName) {
+            if (!this.selectedAsset) return;
+            
+            this.loadingTimeseries = true;
+            try {
+                const res = await fetch('/api/twins/assets/' + this.selectedAsset.id + '/metrics/' + metricName + '/series?limit=60');
+                if (res.ok) {
+                    this.timeseries = await res.json();
+                    this.renderChart();
+                }
+            } catch (e) {
+                console.error('Failed to load timeseries:', e);
+            } finally {
+                this.loadingTimeseries = false;
+            }
+        },
+        
+        renderChart() {
+            if (!this.timeseries.points || this.timeseries.points.length === 0) return;
+            
+            const ctx = document.getElementById('metricsChart');
+            if (!ctx) return;
+            
+            if (this.chart) {
+                this.chart.destroy();
+            }
+            
+            const labels = this.timeseries.points.map(p => {
+                const d = new Date(p.timestamp);
+                return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            });
+            const values = this.timeseries.points.map(p => p.value);
+            
+            this.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: this.selectedMetric,
+                        data: values,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: (context) => {
+                                    return context.parsed.y.toFixed(2) + ' ' + (this.timeseries.unit || '');
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: { display: false },
+                            ticks: { 
+                                maxTicksLimit: 6,
+                                font: { size: 10 }
+                            }
+                        },
+                        y: {
+                            display: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: { 
+                                font: { size: 10 },
+                                callback: (v) => v.toFixed(1)
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        },
+        
+        closePanel() {
+            this.selectedAsset = null;
+            this.assetDetail = null;
+            this.metrics = [];
+            this.selectedMetric = null;
+            this.timeseries = {};
+            if (this.chart) {
+                this.chart.destroy();
+                this.chart = null;
             }
         }
     };
