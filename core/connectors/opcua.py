@@ -2,15 +2,16 @@ import random
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from core.connectors.base import BaseConnector, ConnectorStatus, MetricReading
+from config import settings
 
 class OPCUAConnector(BaseConnector):
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.endpoint = config.get("endpoint", "")
+        self.endpoint = config.get("endpoint", "") or config.get("endpoint_url", "") or settings.opcua_endpoint_url
         self.namespace = config.get("namespace", "")
-        self.username = config.get("username", "")
-        self.password = config.get("password", "")
+        self.username = config.get("username", "") or settings.opcua_username
+        self.password = config.get("password", "") or settings.opcua_password
         self._client = None
     
     @property

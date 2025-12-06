@@ -2,12 +2,13 @@ import random
 from datetime import datetime
 from typing import Dict, List, Any
 from core.connectors.base import BaseConnector, ConnectorStatus, MetricReading
+from config import settings
 
 class PIConnector(BaseConnector):
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.server_url = config.get("server_url", "")
+        self.server_url = config.get("server_url", "") or settings.pi_base_url
         self.api_key = config.get("api_key", "")
         self.database = config.get("database", "")
     

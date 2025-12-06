@@ -113,6 +113,11 @@ async def internal_config_status(
                 "source": "OPCUA_USERNAME/OPCUA_PASSWORD secrets",
                 "has_creds": bool(settings.opcua_username and settings.opcua_password)
             },
+            "opcua_endpoint": {
+                "status": "configured" if settings.opcua_endpoint_url else "empty",
+                "source": "OPCUA_ENDPOINT_URL secret",
+                "has_opcua_endpoint": bool(settings.opcua_endpoint_url)
+            },
             "demo_mode": {
                 "status": "enabled" if settings.demo_mode else "disabled",
                 "source": f"DEMO_MODE={settings.demo_mode}",

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     sap_base_url: str = os.getenv("SAP_BASE_URL", "")
     opcua_username: str = os.getenv("OPCUA_USERNAME", "")
     opcua_password: str = os.getenv("OPCUA_PASSWORD", "")
+    opcua_endpoint_url: str = os.getenv("OPCUA_ENDPOINT_URL", "")
     
     # App settings
     jwt_algorithm: str = "HS256"

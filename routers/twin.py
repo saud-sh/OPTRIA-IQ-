@@ -439,7 +439,7 @@ async def list_assets_with_status(
         ai_score = db.query(AssetAIScore).filter(
             AssetAIScore.tenant_id == tenant_id,
             AssetAIScore.asset_id == asset.id
-        ).order_by(AssetAIScore.created_at.desc()).first()
+        ).order_by(AssetAIScore.computed_at.desc()).first()
         
         site = db.query(Site).filter(Site.id == asset.site_id).first() if asset.site_id else None
         
@@ -529,7 +529,7 @@ async def get_asset_detail(
     ai_score = db.query(AssetAIScore).filter(
         AssetAIScore.tenant_id == tenant_id,
         AssetAIScore.asset_id == asset.id
-    ).order_by(AssetAIScore.created_at.desc()).first()
+    ).order_by(AssetAIScore.computed_at.desc()).first()
     
     mappings = db.query(ExternalSignalMapping).filter(
         ExternalSignalMapping.tenant_id == tenant_id,
