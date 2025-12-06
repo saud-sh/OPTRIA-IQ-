@@ -1,0 +1,281 @@
+ROLE:
+You are the FastAPI + Jinja2 architect working on the OPTRIA IQ project.
+You MUST respect:
+- Multi-tenant safety (tenant_id everywhere)
+- Additive-only changes (NO DROP / NO destructive migrations)
+- Existing architecture: FastAPI + Jinja2 + PostgreSQL + connectors + BlackBox + Digital Twin
+- Existing models: TenantIntegration, ExternalSignalMapping, BlackBoxIncident, Asset, AssetAIScore, etc.
+
+GOAL:
+I want you to:
+1) Seed REALISTIC signal mappings for the ARAMCO_DEMO tenant so that the Digital Twin has multiple metrics per asset.
+2) Expose a clean, tenant-safe API for live time-series per asset/metric using the existing connector abstraction.
+3) Enhance the Digital Twin UI so each asset shows:
+   - latest metric values
+   - a small live chart (last N points) per selected metric
+4) Ensure that when time-series are pulled, the BlackBox layer receives SENSOR events for those readings.
+
+DO NOT break any existing routes or features.
+DO NOT change or delete any existing tables.
+ONLY add new code or extend existing modules safely.
+
+--------------------------------
+SECTION 1 – SEED DEMO SIGNAL MAPPINGS
+--------------------------------
+
+1.1 Create / extend a DEMO seeding function:
+
+- Locate the existing demo seeding / tenant seeding logic (used to create:
+  - tenant code ARAMCO_DEMO
+  - demo users
+  - demo assets for the Digital Twin).
+
+- Add a new helper in a suitable place (for example in a new module `scripts/seed_demo_mappings.py` OR inside an existing `demo_seed` module if you already created it):
+
+  - Function: `seed_demo_signal_mappings(db_session)`
+  - Behavior:
+    - Find the tenant with code `ARAMCO_DEMO`.
+    - Find (or create) a `TenantIntegration` for that tenant:
+      - type: `"pi"` (PI System) OR `"demo"` if PI is not reachable.
+      - name: `"Demo ARAMCO PI"` or `"Demo ARAMCO Connector"`.
+      - config should use:
+        - `settings.pi_base_url` if type="pi"
+        - OR just `{ "mode": "demo" }` if type="demo".
+    - For each existing demo asset in that tenant (the ones already visible in the Digital Twin):
+      - Create at least 2–3 `ExternalSignalMapping` entries per asset, for example:
+        - metric: `vibration_rms`, external_tag like `PI:{asset.code}.VIB`
+        - metric: `temperature`, external_tag like `PI:{asset.code}.TEMP`
+        - metric: `pressure`, external_tag like `PI:{asset.code}.PRES`
+      - Set:
+        - tenant_id = tenant.id
+        - integration_id = the PI/demo integration id
+        - asset_id = asset.id
+        - scaling_factor = 1.0
+        - offset_value = 0.0
+        - unit = store in payload if you already use JSON, or use the existing fields
+        - is_active = True
+    - Use `get_or_create` style logic so the function is idempotent (safe to run multiple times).
+
+- Add a small CLI entry point under `if __name__ == "__main__":` in the script so I can run:
+
+  `python scripts/seed_demo_mappings.py`
+
+  and it will:
+    - open a DB session
+    - call `seed_demo_signal_mappings`
+    - print a clear summary of created mappings.
+
+1.2 Ensure that the existing application startup also calls this seeding logic ONLY when:
+
+- `settings.demo_mode` is True, AND
+- the ARAMCO_DEMO tenant already exists.
+
+This must be additive and safe.
+
+--------------------------------
+SECTION 2 – LIVE TIME-SERIES API FOR DIGITAL TWIN
+--------------------------------
+
+2.1 Add a new API endpoint in `routers/twin.py` (or a dedicated router for the twin):
+
+- Route: `GET /api/twins/assets/{asset_id}/metrics/{metric_name}/series`
+- Query params:
+  - `from_time` (optional, ISO8601 string)
+  - `to_time` (optional, ISO8601 string)
+  - `limit` (optional, integer, default 100)
+
+- Behavior:
+  - Use the current authenticated user and tenant_id (respect RBAC + require_tenant_access).
+  - Find the `Asset` for this tenant by `asset_id`.
+  - Find the corresponding `ExternalSignalMapping` for:
+      - tenant_id = current_user.tenant_id
+      - asset_id = asset.id
+      - internal_metric_name (or metric_name field) = {metric_name}
+      - is_active = True
+  - From that mapping, find the `TenantIntegration` and resolve the correct connector type: `"pi"`, `"demo"`, `"opcua"`, `"sql"`, etc.
+
+- Use an existing connector abstraction (in `core/connectors/*.py`).
+  - If there is already a method like `fetch_timeseries` – reuse it.
+  - If not, ADD a new method to the base connector + demo connector only:
+    - Signature: `fetch_timeseries(tag: str, from_time: datetime, to_time: datetime, limit: int = 100) -> List[Dict]`
+    - For the DEMO connector, synthesize a simple time-series:
+      - timestamps at 1-minute intervals over the last N minutes
+      - values as a small sine wave or random walk
+      - include fields: `timestamp`, `value`, `unit`.
+
+  - For PI / OPC-UA / SQL connectors, you may:
+    - implement a minimal, safe stub that returns synthetic data if the real endpoint is unreachable, BUT:
+    - do NOT crash if the external system is offline.
+    - keep everything tenant-scoped.
+
+- The endpoint should return JSON:
+
+  ```json
+  {
+    "asset_id": 123,
+    "metric": "vibration_rms",
+    "points": [
+      {"timestamp": "...", "value": 3.2, "unit": "mm/s"},
+      ...
+    ]
+  }
+2.2 When the time-series is fetched successfully, emit BlackBox SENSOR events:
+
+Reuse the existing BlackBox / event engine code (under core/blackbox_engine.py or similar).
+
+For each call to the endpoint, create one aggregated BlackBox event per asset/metric:
+
+tenant_id = current_user.tenant_id
+
+asset_id = asset.id
+
+source_system = "OPTRIA_TWIN"
+
+source_type = "TAG_READING"
+
+event_category = "SENSOR"
+
+event_time = now (or latest point timestamp)
+
+severity = "INFO"
+
+summary = f"Time-series fetched for {metric_name} via Digital Twin"
+
+payload = {
+"metric": metric_name,
+"points_count": len(points),
+"integration_type": integration.type,
+"external_tag": mapping.external_tag
+}
+
+Use existing helper methods to insert events; DO NOT duplicate logic.
+
+SECTION 3 – DIGITAL TWIN UI ENHANCEMENTS (NO SPA FRAMEWORK)
+3.1 Update templates/twins/index.html:
+
+Requirements:
+
+Keep the existing grid of asset cards (don’t break current layout).
+
+When the user clicks on any asset card:
+
+Open a right-side sliding panel OR a modal (Tailwind + Alpine.js) that shows:
+
+Asset name, type, criticality.
+
+A list of mapped metrics for this asset (extracted from a new API that lists metrics per asset).
+
+For the selected metric:
+
+Latest value + unit (big number).
+
+A mini chart (using Chart.js via CDN) with the last N points from /api/twins/assets/{id}/metrics/{metric_name}/series.
+
+3.2 Add a small helper API:
+
+In routers/twin.py, add:
+
+GET /api/twins/assets/{asset_id}/metrics:
+
+returns the list of metrics available for that asset from ExternalSignalMapping.
+
+JSON: { "asset_id": ..., "metrics": [ "vibration_rms", "temperature", "pressure", ... ] }.
+
+3.3 Frontend details (Alpine.js):
+
+Add a top-level x-data="twinApp()" on the twin page.
+
+Implement in an inline <script> or in static/js/twin.js a function twinApp() that manages:
+
+selectedAsset (object)
+
+metrics (array of metric names)
+
+selectedMetric
+
+timeseries (array of points)
+
+isPanelOpen (boolean)
+
+Methods:
+
+openAsset(assetId): fetch /api/twins/assets/{id}/metrics, set selectedAsset, open the panel.
+
+selectMetric(metricName): fetch /api/twins/assets/{id}/metrics/{metricName}/series, update timeseries, and redraw the Chart.js chart.
+
+Handle loading + error states gracefully (show spinners, messages).
+
+Use Chart.js via CDN (no build tooling):
+
+html
+Copy code
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+Make sure RTL/LTR is handled via existing rtl / lang flags.
+
+SECTION 4 – SAFETY, TESTING & VERIFICATION
+4.1 Multi-tenant & RBAC:
+
+All new APIs:
+
+MUST use the existing get_current_user and require_tenant_access logic.
+
+MUST filter by tenant_id.
+
+MUST NOT allow cross-tenant asset access.
+
+4.2 Database:
+
+NO new destructive migrations.
+
+If you need new columns for mappings (e.g. unit), add them as nullable with safe Alembic/SQLAlchemy migrations.
+
+Reuse ExternalSignalMapping as much as possible.
+
+4.3 Tests:
+
+Add or extend a small test script, e.g. scripts/twin_smoke_test.py which:
+
+Logs in as demo@aramco.com (tenant_admin).
+
+Calls:
+
+/api/twins/assets
+
+/api/twins/assets/{id}/metrics
+
+/api/twins/assets/{id}/metrics/vibration_rms/series
+
+Prints a summary including number of assets and points.
+
+Ensure that:
+
+The script runs successfully.
+
+No internal server errors are thrown.
+
+Responses are valid JSON.
+
+4.4 Do NOT change:
+
+Existing optimization engine.
+
+Existing BlackBox incident list UI.
+
+Existing onboarding wizard.
+
+Just plug the Digital Twin live charts + signal mappings into the existing structure.
+
+When you finish:
+
+Summarize exactly what you changed (files, routes, templates).
+
+Confirm that:
+
+Digital Twin assets show mapped metrics.
+
+Live charts load correctly for DEMO data.
+
+BlackBox receives SENSOR events when time-series are fetched.
+
+yaml
+Copy code
