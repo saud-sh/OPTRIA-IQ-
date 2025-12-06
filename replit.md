@@ -159,6 +159,14 @@ python scripts/smoke_test_e2e.py  # Run tests
 
 ## Recent Changes
 
+### 2025-12-06: Production Documentation & Final Polish
+- Created README.md with quick start and project overview
+- Created OPS_RUNBOOK.md with deployment and operations procedures
+- Created TENANT_ONBOARDING.md with onboarding workflow guide
+- Created SUMMARY.md with complete feature summary
+- Fixed Alpine.js null reference errors in Digital Twin UI
+- All templates responsive and polished
+
 ### 2025-12-06: Tenant User Management & Digital Twin Enhancement
 - Tenant User Management API (routers/tenant_users.py) with full CRUD, password reset
 - User Management UI at /users for tenant_admin and platform_owner roles
