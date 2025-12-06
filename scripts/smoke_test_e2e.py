@@ -143,9 +143,9 @@ def run_smoke_tests():
                 asset_id=test_asset.id,
                 alert_type="vibration_high",
                 severity="high",
-                message="Smoke test alert",
-                status="open",
-                detected_at=datetime.utcnow()
+                title="Smoke test alert",
+                description="Automated smoke test alert for verification",
+                status="open"
             )
             db.add(test_alert)
             db.commit()
@@ -165,9 +165,11 @@ def run_smoke_tests():
             test_wo = WorkOrder(
                 tenant_id=test_tenant.id,
                 asset_id=test_asset.id,
+                code=f"WO-SMOKE-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
                 title="Smoke Test Work Order",
                 title_ar="أمر عمل اختبار الدخان",
                 description="Test maintenance task",
+                work_type="corrective",
                 priority="high",
                 status="open",
                 due_date=datetime.utcnow() + timedelta(days=7),

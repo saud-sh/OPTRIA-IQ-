@@ -159,6 +159,16 @@ python scripts/smoke_test_e2e.py  # Run tests
 
 ## Recent Changes
 
+### 2025-12-06: Tenant User Management & Digital Twin Enhancement
+- Tenant User Management API (routers/tenant_users.py) with full CRUD, password reset
+- User Management UI at /users for tenant_admin and platform_owner roles
+- auth_source field added to User model (local vs SSO)
+- Query-level tenant isolation (filter before fetch, not after)
+- Digital Twin Visualization at /digital-twin with asset connectivity status
+- Assets API (GET /api/twins/assets, /api/twins/assets/{id}) with health and data status
+- Data connectivity shows live/demo/disconnected based on signal mappings
+- Digital Twin configuration remains at /twins for layout management
+
 ### 2025-12-06: Digital Twin Configuration
 - Database models (TwinLayout, TwinNode) for visualization and asset binding
 - Complete CRUD API endpoints with multi-tenant isolation

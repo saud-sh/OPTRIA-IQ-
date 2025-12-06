@@ -15,6 +15,7 @@ class User(Base):
     full_name = Column(String(255))
     full_name_ar = Column(String(255))
     is_active = Column(Boolean, default=True)
+    auth_source = Column(String(20), default="local")  # "local" or "sso"
     last_login = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -29,6 +30,7 @@ class User(Base):
             "full_name": self.full_name,
             "full_name_ar": self.full_name_ar,
             "is_active": self.is_active,
+            "auth_source": self.auth_source or "local",
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }

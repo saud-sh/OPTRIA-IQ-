@@ -28,6 +28,7 @@ from routers.health import router as health_router
 from routers.work_orders import router as work_orders_router
 from routers.blackbox import router as blackbox_router
 from routers.twin import router as twin_router
+from routers.tenant_users import router as tenant_users_router
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -175,6 +176,7 @@ app.include_router(health_router)
 app.include_router(work_orders_router)
 app.include_router(blackbox_router)
 app.include_router(twin_router)
+app.include_router(tenant_users_router)
 
 def get_lang(request: Request) -> str:
     return request.query_params.get("lang", "ar")
@@ -516,6 +518,26 @@ async def blackbox_incident_report_page(
         "incident_id": incident_id
     })
 
+@app.get("/digital-twin", response_class=HTMLResponse)
+async def digital_twin_page(
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("twins/index.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user
+    })
+
 @app.get("/twins", response_class=HTMLResponse)
 async def twins_page(
     request: Request,
@@ -532,6 +554,29 @@ async def twins_page(
     trans = get_translation(lang)
     
     return templates.TemplateResponse("twins/layouts.html", {
+        "request": request,
+        "t": trans,
+        "lang": lang,
+        "rtl": lang == "ar",
+        "user": current_user
+    })
+
+@app.get("/users", response_class=HTMLResponse)
+async def users_page(
+    request: Request,
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role not in ["platform_owner", "tenant_admin"]:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    
+    lang = get_lang(request)
+    trans = get_translation(lang)
+    
+    return templates.TemplateResponse("users/index.html", {
         "request": request,
         "t": trans,
         "lang": lang,

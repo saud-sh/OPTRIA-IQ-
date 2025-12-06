@@ -1,0 +1,475 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}{{ t.get('users_title', 'User Management') }}{% endblock %}
+
+{% block content %}
+<div x-data="usersApp()" x-init="init()">
+    <div class="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ t.get('users_title', 'User Management') }}</h1>
+            <p class="text-gray-600">{{ t.get('users_subtitle', 'Manage users in your organization') }}</p>
+        </div>
+        <button @click="openCreateModal()" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            <svg class="w-5 h-5 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            {{ t.get('users_create', 'Create User') }}
+        </button>
+    </div>
+    
+    <div class="bg-white rounded-xl shadow-sm border mb-6">
+        <div class="p-4 border-b">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <input type="text" x-model="searchQuery" @input.debounce.300ms="loadUsers()" 
+                           class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           :placeholder="'{{ t.get('search_placeholder', 'Search users...') }}'">
+                </div>
+                <select x-model="roleFilter" @change="loadUsers()" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">{{ t.get('all_roles', 'All Roles') }}</option>
+                    <option value="tenant_admin">{{ t.get('role_tenant_admin', 'Tenant Admin') }}</option>
+                    <option value="optimization_engineer">{{ t.get('role_optimization_engineer', 'Optimization Engineer') }}</option>
+                    <option value="engineer">{{ t.get('role_engineer', 'Engineer') }}</option>
+                    <option value="viewer">{{ t.get('role_viewer', 'Viewer') }}</option>
+                </select>
+                <select x-model="statusFilter" @change="loadUsers()" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">{{ t.get('all_status', 'All Status') }}</option>
+                    <option value="true">{{ t.get('active', 'Active') }}</option>
+                    <option value="false">{{ t.get('inactive', 'Inactive') }}</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('name', 'Name') }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('email', 'Email') }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('role', 'Role') }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('auth_source', 'Auth Source') }}</th>
+                        <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('status', 'Status') }}</th>
+                        <th class="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t.get('actions', 'Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    <template x-if="loading">
+                        <tr>
+                            <td colspan="6" class="px-6 py-12 text-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p class="mt-2 text-gray-500">{{ t.get('loading', 'Loading...') }}</p>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="!loading && users.length === 0">
+                        <tr>
+                            <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                {{ t.get('no_users_found', 'No users found') }}
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-for="user in users" :key="user.id">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium me-3">
+                                        <span x-text="(user.full_name || user.username).charAt(0).toUpperCase()"></span>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900" x-text="user.full_name || user.username"></div>
+                                        <div class="text-sm text-gray-500" x-text="user.username"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-gray-600" x-text="user.email"></td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="{
+                                          'bg-purple-100 text-purple-800': user.role === 'tenant_admin',
+                                          'bg-blue-100 text-blue-800': user.role === 'optimization_engineer',
+                                          'bg-green-100 text-green-800': user.role === 'engineer',
+                                          'bg-gray-100 text-gray-800': user.role === 'viewer'
+                                      }"
+                                      x-text="formatRole(user.role)">
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="user.auth_source === 'sso' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'"
+                                      x-text="user.auth_source === 'sso' ? 'SSO' : 'Local'">
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                      x-text="user.is_active ? '{{ t.get('active', 'Active') }}' : '{{ t.get('inactive', 'Inactive') }}'">
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-end">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button @click="openEditModal(user)" class="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="{{ t.get('edit', 'Edit') }}">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                        </svg>
+                                    </button>
+                                    <button @click="resetPassword(user)" class="p-2 text-gray-600 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg" 
+                                            :disabled="user.auth_source === 'sso'"
+                                            :class="user.auth_source === 'sso' ? 'opacity-50 cursor-not-allowed' : ''"
+                                            title="{{ t.get('reset_password', 'Reset Password') }}">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                                        </svg>
+                                    </button>
+                                    <button @click="toggleActive(user)" class="p-2 rounded-lg"
+                                            :class="user.is_active ? 'text-gray-600 hover:text-red-600 hover:bg-red-50' : 'text-gray-600 hover:text-green-600 hover:bg-green-50'"
+                                            :title="user.is_active ? '{{ t.get('deactivate', 'Deactivate') }}' : '{{ t.get('activate', 'Activate') }}'">
+                                        <svg x-show="user.is_active" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                        </svg>
+                                        <svg x-show="!user.is_active" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="px-6 py-4 border-t flex items-center justify-between" x-show="total > 0">
+            <p class="text-sm text-gray-600">
+                {{ t.get('showing', 'Showing') }} <span x-text="skip + 1"></span> - <span x-text="Math.min(skip + limit, total)"></span> {{ t.get('of', 'of') }} <span x-text="total"></span>
+            </p>
+            <div class="flex gap-2">
+                <button @click="prevPage()" :disabled="skip === 0" 
+                        class="px-3 py-1 border rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">
+                    {{ t.get('previous', 'Previous') }}
+                </button>
+                <button @click="nextPage()" :disabled="skip + limit >= total"
+                        class="px-3 py-1 border rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">
+                    {{ t.get('next', 'Next') }}
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="showModal" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black opacity-50" @click="closeModal()"></div>
+            <div class="relative bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold" x-text="editingUser ? '{{ t.get('edit_user', 'Edit User') }}' : '{{ t.get('create_user', 'Create User') }}'"></h3>
+                    <button @click="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <form @submit.prevent="saveUser()">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('full_name', 'Full Name') }} *</label>
+                            <input type="text" x-model="formData.full_name" required
+                                   class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('full_name_ar', 'Full Name (Arabic)') }}</label>
+                            <input type="text" x-model="formData.full_name_ar" dir="rtl"
+                                   class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div x-show="!editingUser">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('email', 'Email') }} *</label>
+                            <input type="email" x-model="formData.email" :required="!editingUser"
+                                   class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div x-show="!editingUser">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('username', 'Username') }} *</label>
+                            <input type="text" x-model="formData.username" :required="!editingUser"
+                                   class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('role', 'Role') }} *</label>
+                            <select x-model="formData.role" required
+                                    class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">{{ t.get('select_role', 'Select Role') }}</option>
+                                <template x-for="role in availableRoles" :key="role">
+                                    <option :value="role" x-text="formatRole(role)"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div x-show="!editingUser">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t.get('password', 'Password') }}</label>
+                            <input type="password" x-model="formData.password"
+                                   class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="{{ t.get('password_placeholder', 'Leave empty to auto-generate') }}">
+                        </div>
+                        
+                        <div x-show="editingUser" class="flex items-center">
+                            <input type="checkbox" x-model="formData.is_active" id="is_active" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <label for="is_active" class="ms-2 text-sm text-gray-700">{{ t.get('active', 'Active') }}</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-3 mt-6">
+                        <button type="button" @click="closeModal()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                            {{ t.get('cancel', 'Cancel') }}
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" :disabled="saving">
+                            <span x-show="!saving" x-text="editingUser ? '{{ t.get('save_changes', 'Save Changes') }}' : '{{ t.get('create', 'Create') }}'"></span>
+                            <span x-show="saving">{{ t.get('saving', 'Saving...') }}</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="showPasswordModal" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black opacity-50" @click="showPasswordModal = false"></div>
+            <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2" x-text="newUserCreated ? '{{ t.get('user_created', 'User Created') }}' : '{{ t.get('password_reset', 'Password Reset') }}'"></h3>
+                    <p class="text-gray-600 mb-4">{{ t.get('password_info', 'Please share this password with the user securely:') }}</p>
+                    <div class="bg-gray-100 rounded-lg p-4 mb-4">
+                        <code class="text-lg font-mono" x-text="generatedPassword"></code>
+                    </div>
+                    <button @click="showPasswordModal = false; generatedPassword = ''" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        {{ t.get('close', 'Close') }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function usersApp() {
+    return {
+        users: [],
+        loading: true,
+        total: 0,
+        skip: 0,
+        limit: 20,
+        searchQuery: '',
+        roleFilter: '',
+        statusFilter: '',
+        showModal: false,
+        showPasswordModal: false,
+        editingUser: null,
+        saving: false,
+        generatedPassword: '',
+        newUserCreated: false,
+        availableRoles: ['tenant_admin', 'optimization_engineer', 'engineer', 'viewer'],
+        formData: {
+            email: '',
+            username: '',
+            full_name: '',
+            full_name_ar: '',
+            role: '',
+            password: '',
+            is_active: true
+        },
+        
+        async init() {
+            await this.loadRoles();
+            await this.loadUsers();
+        },
+        
+        async loadRoles() {
+            try {
+                const response = await fetch('/api/tenant-users/roles/available');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.availableRoles = data.roles;
+                }
+            } catch (e) {
+                console.error('Failed to load roles:', e);
+            }
+        },
+        
+        async loadUsers() {
+            this.loading = true;
+            try {
+                const params = new URLSearchParams({
+                    skip: this.skip,
+                    limit: this.limit
+                });
+                if (this.searchQuery) params.append('search', this.searchQuery);
+                if (this.roleFilter) params.append('role', this.roleFilter);
+                if (this.statusFilter) params.append('is_active', this.statusFilter);
+                
+                const response = await fetch(`/api/tenant-users/?${params}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.users = data.users;
+                    this.total = data.total;
+                }
+            } catch (e) {
+                console.error('Failed to load users:', e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        formatRole(role) {
+            const roles = {
+                'platform_owner': '{{ t.get('role_platform_owner', 'Platform Owner') }}',
+                'tenant_admin': '{{ t.get('role_tenant_admin', 'Tenant Admin') }}',
+                'optimization_engineer': '{{ t.get('role_optimization_engineer', 'Optimization Engineer') }}',
+                'engineer': '{{ t.get('role_engineer', 'Engineer') }}',
+                'viewer': '{{ t.get('role_viewer', 'Viewer') }}'
+            };
+            return roles[role] || role;
+        },
+        
+        openCreateModal() {
+            this.editingUser = null;
+            this.formData = {
+                email: '',
+                username: '',
+                full_name: '',
+                full_name_ar: '',
+                role: '',
+                password: '',
+                is_active: true
+            };
+            this.showModal = true;
+        },
+        
+        openEditModal(user) {
+            this.editingUser = user;
+            this.formData = {
+                full_name: user.full_name || '',
+                full_name_ar: user.full_name_ar || '',
+                role: user.role,
+                is_active: user.is_active
+            };
+            this.showModal = true;
+        },
+        
+        closeModal() {
+            this.showModal = false;
+            this.editingUser = null;
+        },
+        
+        async saveUser() {
+            this.saving = true;
+            try {
+                let response;
+                if (this.editingUser) {
+                    response = await fetch(`/api/tenant-users/${this.editingUser.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            full_name: this.formData.full_name,
+                            full_name_ar: this.formData.full_name_ar,
+                            role: this.formData.role,
+                            is_active: this.formData.is_active
+                        })
+                    });
+                } else {
+                    response = await fetch('/api/tenant-users/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.formData)
+                    });
+                }
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (!this.editingUser && data.generated_password) {
+                        this.generatedPassword = data.generated_password;
+                        this.newUserCreated = true;
+                        this.showPasswordModal = true;
+                    }
+                    this.closeModal();
+                    await this.loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '{{ t.get('error_saving', 'Error saving user') }}');
+                }
+            } catch (e) {
+                console.error('Failed to save user:', e);
+                alert('{{ t.get('error_saving', 'Error saving user') }}');
+            } finally {
+                this.saving = false;
+            }
+        },
+        
+        async resetPassword(user) {
+            if (user.auth_source === 'sso') return;
+            if (!confirm('{{ t.get('confirm_reset_password', 'Reset password for this user?') }}')) return;
+            
+            try {
+                const response = await fetch(`/api/tenant-users/${user.id}/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.generatedPassword = data.new_password;
+                    this.newUserCreated = false;
+                    this.showPasswordModal = true;
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '{{ t.get('error_reset_password', 'Error resetting password') }}');
+                }
+            } catch (e) {
+                console.error('Failed to reset password:', e);
+            }
+        },
+        
+        async toggleActive(user) {
+            const action = user.is_active ? '{{ t.get('deactivate', 'deactivate') }}' : '{{ t.get('activate', 'activate') }}';
+            if (!confirm(`{{ t.get('confirm_toggle_active', 'Are you sure you want to') }} ${action} {{ t.get('this_user', 'this user') }}?`)) return;
+            
+            try {
+                const response = await fetch(`/api/tenant-users/${user.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: !user.is_active })
+                });
+                
+                if (response.ok) {
+                    await this.loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '{{ t.get('error_updating', 'Error updating user') }}');
+                }
+            } catch (e) {
+                console.error('Failed to toggle active:', e);
+            }
+        },
+        
+        prevPage() {
+            if (this.skip > 0) {
+                this.skip -= this.limit;
+                this.loadUsers();
+            }
+        },
+        
+        nextPage() {
+            if (this.skip + this.limit < this.total) {
+                this.skip += this.limit;
+                this.loadUsers();
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

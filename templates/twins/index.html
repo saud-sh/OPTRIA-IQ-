@@ -1,0 +1,321 @@
+{% extends "app_base.html" %}
+
+{% block page_title %}{{ t.get('nav_digital_twin', 'Digital Twin') }}{% endblock %}
+
+{% block content %}
+<div x-data="digitalTwin()" x-init="init()" class="h-full">
+    <div class="mb-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">{{ t.get('nav_digital_twin', 'Digital Twin') }}</h1>
+                <p class="text-gray-600">{{ t.get('twin_view_desc', 'Real-time asset visualization and monitoring') }}</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/twins?lang={{ lang }}" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                    {{ t.get('manage_layouts', 'Manage Layouts') }}
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-gray-900" x-text="summary.total_assets || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('total_assets', 'Total Assets') }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-green-600" x-text="summary.normal || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('normal', 'Normal') }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-yellow-600" x-text="summary.warning || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('warning', 'Warning') }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-red-600" x-text="summary.critical || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('critical', 'Critical') }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-blue-600" x-text="summary.live_data || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('live_data', 'Live Data') }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <p class="text-2xl font-bold text-gray-400" x-text="summary.disconnected || 0"></p>
+            <p class="text-sm text-gray-600">{{ t.get('disconnected', 'Disconnected') }}</p>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-xl shadow-sm border mb-6 p-4">
+        <div class="flex flex-col md:flex-row gap-4">
+            <div class="flex-1">
+                <select x-model="filters.site_id" @change="loadAssets()" class="w-full px-4 py-2 border rounded-lg">
+                    <option value="">{{ t.get('all_sites', 'All Sites') }}</option>
+                    <template x-for="site in filterOptions.sites" :key="site.id">
+                        <option :value="site.id" x-text="site.name"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="flex-1">
+                <select x-model="filters.asset_type" @change="loadAssets()" class="w-full px-4 py-2 border rounded-lg">
+                    <option value="">{{ t.get('all_types', 'All Types') }}</option>
+                    <template x-for="type in filterOptions.asset_types" :key="type">
+                        <option :value="type" x-text="type"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="flex-1">
+                <select x-model="filters.criticality" @change="loadAssets()" class="w-full px-4 py-2 border rounded-lg">
+                    <option value="">{{ t.get('all_criticalities', 'All Criticalities') }}</option>
+                    <option value="high">{{ t.get('high', 'High') }}</option>
+                    <option value="medium">{{ t.get('medium', 'Medium') }}</option>
+                    <option value="low">{{ t.get('low', 'Low') }}</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="flex gap-6">
+        <div class="flex-1">
+            <div class="bg-gray-100 rounded-xl p-4 min-h-[500px]" :class="{'opacity-50': loading}">
+                <div x-show="loading" class="flex items-center justify-center h-64">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+                
+                <div x-show="!loading && assets.length === 0" class="flex items-center justify-center h-64 text-gray-500">
+                    {{ t.get('no_assets', 'No assets found') }}
+                </div>
+                
+                <div x-show="!loading && assets.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    <template x-for="asset in assets" :key="asset.id">
+                        <div @click="selectAsset(asset)" 
+                             class="relative bg-white rounded-xl p-4 shadow-sm border-2 cursor-pointer hover:shadow-md transition"
+                             :class="{
+                                 'border-green-500': asset.health_status === 'normal',
+                                 'border-yellow-500': asset.health_status === 'warning',
+                                 'border-red-500': asset.health_status === 'critical',
+                                 'border-gray-300': asset.health_status === 'unknown',
+                                 'ring-2 ring-blue-500': selectedAsset?.id === asset.id
+                             }">
+                            <div class="absolute top-2 {{ 'left-2' if lang == 'ar' else 'right-2' }}">
+                                <span class="w-3 h-3 rounded-full inline-block"
+                                      :class="{
+                                          'bg-green-500': asset.data_status === 'live',
+                                          'bg-yellow-400': asset.data_status === 'demo',
+                                          'bg-gray-400': asset.data_status === 'disconnected'
+                                      }"
+                                      :title="asset.data_status"></span>
+                            </div>
+                            
+                            <div class="flex flex-col items-center text-center">
+                                <div class="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                     :class="{
+                                         'bg-green-100': asset.health_status === 'normal',
+                                         'bg-yellow-100': asset.health_status === 'warning',
+                                         'bg-red-100': asset.health_status === 'critical',
+                                         'bg-gray-100': asset.health_status === 'unknown'
+                                     }">
+                                    <svg class="w-6 h-6" 
+                                         :class="{
+                                             'text-green-600': asset.health_status === 'normal',
+                                             'text-yellow-600': asset.health_status === 'warning',
+                                             'text-red-600': asset.health_status === 'critical',
+                                             'text-gray-400': asset.health_status === 'unknown'
+                                         }"
+                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                                    </svg>
+                                </div>
+                                <p class="text-sm font-medium text-gray-900 truncate w-full" x-text="asset.name"></p>
+                                <p class="text-xs text-gray-500" x-text="asset.asset_type"></p>
+                                <p class="text-xs mt-1">
+                                    <span class="px-2 py-0.5 rounded-full"
+                                          :class="{
+                                              'bg-red-100 text-red-700': asset.criticality === 'high',
+                                              'bg-yellow-100 text-yellow-700': asset.criticality === 'medium',
+                                              'bg-gray-100 text-gray-700': asset.criticality === 'low'
+                                          }"
+                                          x-text="asset.criticality"></span>
+                                </p>
+                                <p class="text-lg font-bold mt-2"
+                                   :class="{
+                                       'text-green-600': asset.health_status === 'normal',
+                                       'text-yellow-600': asset.health_status === 'warning',
+                                       'text-red-600': asset.health_status === 'critical',
+                                       'text-gray-400': asset.health_status === 'unknown'
+                                   }"
+                                   x-text="asset.health_score !== null ? asset.health_score + '%' : '--'"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+        
+        <div x-show="selectedAsset" x-transition class="w-80 bg-white rounded-xl shadow-sm border overflow-hidden flex-shrink-0">
+            <div class="p-4 border-b flex items-center justify-between"
+                 :class="{
+                     'bg-green-50': assetDetail?.health?.health_score >= 80,
+                     'bg-yellow-50': assetDetail?.health?.health_score >= 50 && assetDetail?.health?.health_score < 80,
+                     'bg-red-50': assetDetail?.health?.health_score < 50 && assetDetail?.health?.health_score !== null,
+                     'bg-gray-50': assetDetail?.health?.health_score === null
+                 }">
+                <h3 class="font-semibold text-gray-900" x-text="selectedAsset?.name"></h3>
+                <button @click="selectedAsset = null; assetDetail = null" class="p-1 hover:bg-gray-200 rounded">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div x-show="loadingDetail" class="p-8 text-center">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+            </div>
+            
+            <div x-show="!loadingDetail && assetDetail" class="divide-y">
+                <div class="p-4">
+                    <p class="text-xs text-gray-500 mb-1">{{ t.get('asset_info', 'Asset Information') }}</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">{{ t.get('code', 'Code') }}</span>
+                            <span class="font-medium" x-text="assetDetail?.asset?.code"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">{{ t.get('type', 'Type') }}</span>
+                            <span class="font-medium" x-text="assetDetail?.asset?.asset_type"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">{{ t.get('site', 'Site') }}</span>
+                            <span class="font-medium" x-text="assetDetail?.asset?.site_name || '-'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">{{ t.get('criticality', 'Criticality') }}</span>
+                            <span class="font-medium capitalize" x-text="assetDetail?.asset?.criticality"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-4">
+                    <p class="text-xs text-gray-500 mb-3">{{ t.get('health_metrics', 'Health Metrics') }}</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-gray-50 rounded-lg p-3 text-center">
+                            <p class="text-2xl font-bold"
+                               :class="{
+                                   'text-green-600': assetDetail?.health?.health_score >= 80,
+                                   'text-yellow-600': assetDetail?.health?.health_score >= 50 && assetDetail?.health?.health_score < 80,
+                                   'text-red-600': assetDetail?.health?.health_score < 50 && assetDetail?.health?.health_score !== null,
+                                   'text-gray-400': assetDetail?.health?.health_score === null
+                               }"
+                               x-text="assetDetail?.health?.health_score !== null ? assetDetail.health.health_score + '%' : '--'"></p>
+                            <p class="text-xs text-gray-500">{{ t.get('health_score', 'Health Score') }}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center">
+                            <p class="text-2xl font-bold text-orange-600" 
+                               x-text="assetDetail?.health?.failure_probability !== null ? (assetDetail.health.failure_probability * 100).toFixed(1) + '%' : '--'"></p>
+                            <p class="text-xs text-gray-500">{{ t.get('failure_prob', 'Failure Prob.') }}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center col-span-2">
+                            <p class="text-2xl font-bold text-blue-600" 
+                               x-text="assetDetail?.health?.remaining_useful_life_days !== null ? assetDetail.health.remaining_useful_life_days + ' days' : '--'"></p>
+                            <p class="text-xs text-gray-500">{{ t.get('remaining_life', 'Remaining Useful Life') }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-4" x-show="assetDetail?.signal_mappings?.length > 0">
+                    <p class="text-xs text-gray-500 mb-2">{{ t.get('data_connections', 'Data Connections') }}</p>
+                    <div class="space-y-2">
+                        <template x-for="mapping in assetDetail?.signal_mappings" :key="mapping.id">
+                            <div class="flex items-center gap-2 text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <circle cx="10" cy="10" r="4"/>
+                                </svg>
+                                <span x-text="mapping.internal_metric_name"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <div class="p-4" x-show="assetDetail?.recent_incidents?.length > 0">
+                    <p class="text-xs text-gray-500 mb-2">{{ t.get('recent_incidents', 'Recent Incidents') }}</p>
+                    <div class="space-y-2">
+                        <template x-for="incident in assetDetail?.recent_incidents" :key="incident.id">
+                            <a :href="'/blackbox/incidents/' + incident.id + '?lang={{ lang }}'" 
+                               class="block text-xs bg-red-50 text-red-700 px-2 py-1 rounded hover:bg-red-100">
+                                <span x-text="incident.incident_number"></span> - <span x-text="incident.incident_type"></span>
+                            </a>
+                        </template>
+                    </div>
+                </div>
+                
+                <div class="p-4">
+                    <a :href="'/assets?asset_id=' + selectedAsset?.id + '&lang={{ lang }}'" 
+                       class="block text-center w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        {{ t.get('view_asset_details', 'View Asset Details') }}
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function digitalTwin() {
+    return {
+        assets: [],
+        loading: true,
+        selectedAsset: null,
+        assetDetail: null,
+        loadingDetail: false,
+        summary: {},
+        filterOptions: {
+            sites: [],
+            asset_types: []
+        },
+        filters: {
+            site_id: '',
+            asset_type: '',
+            criticality: ''
+        },
+        
+        async init() {
+            await this.loadAssets();
+        },
+        
+        async loadAssets() {
+            this.loading = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.filters.site_id) params.append('site_id', this.filters.site_id);
+                if (this.filters.asset_type) params.append('asset_type', this.filters.asset_type);
+                if (this.filters.criticality) params.append('criticality', this.filters.criticality);
+                
+                const res = await fetch('/api/twins/assets?' + params.toString());
+                const data = await res.json();
+                
+                this.assets = data.assets || [];
+                this.summary = data.summary || {};
+                this.filterOptions = data.filters || { sites: [], asset_types: [] };
+            } catch (e) {
+                console.error('Failed to load assets:', e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async selectAsset(asset) {
+            this.selectedAsset = asset;
+            this.loadingDetail = true;
+            
+            try {
+                const res = await fetch('/api/twins/assets/' + asset.id);
+                this.assetDetail = await res.json();
+            } catch (e) {
+                console.error('Failed to load asset detail:', e);
+            } finally {
+                this.loadingDetail = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

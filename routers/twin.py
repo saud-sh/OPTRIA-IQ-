@@ -4,11 +4,13 @@ Manage layouts, nodes, and asset bindings for industrial visualization
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional
-from datetime import datetime
+from sqlalchemy import func
+from typing import Optional, List
+from datetime import datetime, timedelta
 from models.user import User
 from models.blackbox import TwinLayout, TwinNode
-from models.asset import Asset
+from models.asset import Asset, Site, AssetAIScore
+from models.integration import TenantIntegration, ExternalSignalMapping
 from core.auth import get_current_user
 from core.rbac import has_capability
 from models.base import get_db
@@ -391,4 +393,191 @@ async def list_layout_nodes(
     return {
         "nodes": [n.to_dict() for n in nodes],
         "total": len(nodes)
+    }
+
+
+@router.get("/assets")
+async def list_assets_with_status(
+    site_id: Optional[int] = None,
+    asset_type: Optional[str] = None,
+    criticality: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get assets with health and connectivity status for Digital Twin view"""
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = current_user.tenant_id
+    if current_user.role == "platform_owner":
+        tenant_id = tenant_id or 1
+    
+    query = db.query(Asset).filter(Asset.tenant_id == tenant_id)
+    
+    if site_id:
+        query = query.filter(Asset.site_id == site_id)
+    if asset_type:
+        query = query.filter(Asset.asset_type == asset_type)
+    if criticality:
+        query = query.filter(Asset.criticality == criticality)
+    
+    assets = query.order_by(Asset.criticality.desc(), Asset.name).all()
+    
+    active_integrations = db.query(TenantIntegration).filter(
+        TenantIntegration.tenant_id == tenant_id,
+        TenantIntegration.status == "active"
+    ).count()
+    
+    mapped_asset_ids = set()
+    mappings = db.query(ExternalSignalMapping.asset_id).filter(
+        ExternalSignalMapping.tenant_id == tenant_id
+    ).distinct().all()
+    mapped_asset_ids = {m[0] for m in mappings if m[0]}
+    
+    result = []
+    for asset in assets:
+        ai_score = db.query(AssetAIScore).filter(
+            AssetAIScore.tenant_id == tenant_id,
+            AssetAIScore.asset_id == asset.id
+        ).order_by(AssetAIScore.created_at.desc()).first()
+        
+        site = db.query(Site).filter(Site.id == asset.site_id).first() if asset.site_id else None
+        
+        if asset.id in mapped_asset_ids and active_integrations > 0:
+            data_status = "live"
+        elif active_integrations > 0:
+            data_status = "demo"
+        else:
+            data_status = "disconnected"
+        
+        health_score = ai_score.health_score if ai_score else None
+        if health_score is not None:
+            if health_score >= 80:
+                health_status = "normal"
+            elif health_score >= 50:
+                health_status = "warning"
+            else:
+                health_status = "critical"
+        else:
+            health_status = "unknown"
+        
+        result.append({
+            "id": asset.id,
+            "code": asset.code,
+            "name": asset.name,
+            "name_ar": asset.name_ar,
+            "asset_type": asset.asset_type,
+            "criticality": asset.criticality,
+            "status": asset.status,
+            "site_id": asset.site_id,
+            "site_name": site.name if site else None,
+            "health_score": health_score,
+            "failure_probability": ai_score.failure_probability if ai_score else None,
+            "remaining_useful_life_days": ai_score.remaining_useful_life_days if ai_score else None,
+            "health_status": health_status,
+            "data_status": data_status,
+            "is_data_connected": data_status == "live"
+        })
+    
+    sites = db.query(Site).filter(Site.tenant_id == tenant_id).all()
+    asset_types = list(set([a.asset_type for a in assets if a.asset_type]))
+    
+    return {
+        "assets": result,
+        "total": len(result),
+        "filters": {
+            "sites": [{"id": s.id, "name": s.name} for s in sites],
+            "asset_types": asset_types,
+            "criticalities": ["high", "medium", "low"]
+        },
+        "summary": {
+            "total_assets": len(result),
+            "live_data": sum(1 for a in result if a["data_status"] == "live"),
+            "demo_data": sum(1 for a in result if a["data_status"] == "demo"),
+            "disconnected": sum(1 for a in result if a["data_status"] == "disconnected"),
+            "normal": sum(1 for a in result if a["health_status"] == "normal"),
+            "warning": sum(1 for a in result if a["health_status"] == "warning"),
+            "critical": sum(1 for a in result if a["health_status"] == "critical")
+        }
+    }
+
+
+@router.get("/assets/{asset_id}")
+async def get_asset_detail(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get detailed asset information for the side panel"""
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = current_user.tenant_id
+    if current_user.role == "platform_owner":
+        tenant_id = tenant_id or 1
+    
+    asset = db.query(Asset).filter(
+        Asset.id == asset_id,
+        Asset.tenant_id == tenant_id
+    ).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    
+    site = db.query(Site).filter(Site.id == asset.site_id).first() if asset.site_id else None
+    
+    ai_score = db.query(AssetAIScore).filter(
+        AssetAIScore.tenant_id == tenant_id,
+        AssetAIScore.asset_id == asset.id
+    ).order_by(AssetAIScore.created_at.desc()).first()
+    
+    mappings = db.query(ExternalSignalMapping).filter(
+        ExternalSignalMapping.tenant_id == tenant_id,
+        ExternalSignalMapping.asset_id == asset_id
+    ).all()
+    
+    from models.blackbox import BlackBoxIncident
+    incidents = db.query(BlackBoxIncident).filter(
+        BlackBoxIncident.tenant_id == tenant_id,
+        BlackBoxIncident.asset_id == asset_id,
+        BlackBoxIncident.status.in_(["open", "investigating"])
+    ).order_by(BlackBoxIncident.started_at.desc()).limit(5).all()
+    
+    return {
+        "asset": {
+            "id": asset.id,
+            "code": asset.code,
+            "name": asset.name,
+            "name_ar": asset.name_ar,
+            "asset_type": asset.asset_type,
+            "manufacturer": asset.manufacturer,
+            "model": asset.model,
+            "criticality": asset.criticality,
+            "status": asset.status,
+            "site_name": site.name if site else None,
+            "site_code": site.code if site else None
+        },
+        "health": {
+            "health_score": ai_score.health_score if ai_score else None,
+            "failure_probability": ai_score.failure_probability if ai_score else None,
+            "remaining_useful_life_days": ai_score.remaining_useful_life_days if ai_score else None,
+            "anomaly_score": ai_score.anomaly_score if ai_score else None,
+            "last_updated": ai_score.created_at.isoformat() if ai_score else None
+        },
+        "signal_mappings": [
+            {
+                "id": m.id,
+                "external_tag": m.external_tag,
+                "internal_metric_name": m.internal_metric_name
+            } for m in mappings
+        ],
+        "recent_incidents": [
+            {
+                "id": str(i.id),
+                "incident_number": i.incident_number,
+                "incident_type": i.incident_type,
+                "severity": i.severity,
+                "status": i.status
+            } for i in incidents
+        ]
     }
