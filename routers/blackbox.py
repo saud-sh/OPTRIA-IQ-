@@ -649,19 +649,56 @@ async def run_full_pipeline(
     db: Session = Depends(get_db)
 ):
     """Run complete Black Box pipeline (collect + detect), or seed demo data in DEMO_MODE"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not has_capability(current_user, "manage_integrations"):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    from config import settings
-    
-    if settings.demo_mode:
-        from main import seed_blackbox_demo_data_refresh
-        seed_blackbox_demo_data_refresh(db, current_user.tenant_id)
-        result = {"demo_data_refreshed": True}
-    else:
-        result = run_blackbox_pipeline(db, current_user.tenant_id)
-    
-    return {"success": True, "pipeline_result": result}
+    try:
+        from config import settings
+        
+        if settings.demo_mode:
+            try:
+                from main import seed_blackbox_demo_data_refresh
+                seed_blackbox_demo_data_refresh(db, current_user.tenant_id)
+                
+                # Count incidents and events created
+                incidents = db.query(BlackBoxIncident).filter(
+                    BlackBoxIncident.tenant_id == current_user.tenant_id
+                ).count()
+                events = db.query(BlackBoxEvent).filter(
+                    BlackBoxEvent.tenant_id == current_user.tenant_id
+                ).count()
+                
+                return {
+                    "status": "ok",
+                    "incidents_created": incidents,
+                    "events_processed": events,
+                    "mode": "demo"
+                }
+            except Exception as e:
+                logger.error(f"Black Box demo seeding error: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail={"status": "error", "message": "Black Box demo seeding failed", "reason": str(e)}
+                )
+        else:
+            result = run_blackbox_pipeline(db, current_user.tenant_id)
+            return {
+                "status": "ok",
+                "incidents_created": result.get("incidents_created", 0),
+                "events_processed": result.get("events_processed", 0),
+                "mode": "production"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Black Box engine error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"status": "error", "message": "Black Box engine failure", "reason": str(e)}
+        )
 
 
 @router.get("/incidents/{incident_id}/events")

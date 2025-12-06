@@ -403,7 +403,7 @@ def seed_blackbox_demo_data_refresh(db: Session, tenant_id: int):
     if not assets:
         return
     
-    seed_blackbox_demo_data(db, tenant)
+    seed_demo_blackbox_data(db, tenant)
 
 def seed_demo_blackbox_data(db: Session, tenant: Tenant):
     """Seed demo Black Box events and incidents"""

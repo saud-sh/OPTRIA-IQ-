@@ -1,0 +1,87 @@
+You have a runtime error on the Black Box engine endpoint.
+
+Symptom in browser console:
+- POST /api/blackbox/engine/run returns 500 (Internal Server Error)
+- The frontend then fails to parse JSON with:
+  "Error running pipeline: SyntaxError: Unexpected token 'I', 'Internal S'... is not valid JSON"
+
+I need you to:
+
+1) Locate the endpoint and engine
+   - routers/blackbox.py (or similar)
+   - core/blackbox_engine.py
+   - any related models (BlackBoxIncident, BlackBoxEvent, etc.)
+
+2) Reproduce the error
+   - Run the FastAPI app (if not already running)
+   - In the Replit Shell, call the endpoint with a minimal valid payload, e.g.:
+
+     curl -v -c /tmp/cookies.txt -b /tmp/cookies.txt \
+       -X POST http://localhost:5000/api/auth/login \
+       -H "Content-Type: application/json" \
+       -d '{"email":"demo@aramco.com","password":"Demo2024!"}'
+
+     then:
+
+     curl -v -c /tmp/cookies.txt -b /tmp/cookies.txt \
+       -X POST http://localhost:5000/api/blackbox/engine/run \
+       -H "Content-Type: application/json" \
+       -d '{"mode":"full","lookback_minutes":60}'
+
+   - Inspect the traceback in the server logs and identify the exact failing line.
+
+3) Fix the backend bug
+   - Correct any wrong field names (for example: root_asset_id vs asset_id, start_time vs started_at, etc.)
+   - Make sure any DB queries for BlackBoxIncident / BlackBoxEvent are tenant-aware and cannot crash on NULLs.
+   - Ensure the engine can safely run even if there are no events yet (empty dataset should not raise an exception).
+   - Wrap engine execution in a try/except and log errors with logger.error, but DO NOT swallow them silently.
+
+4) Standardize the JSON response
+   - On success, return a proper JSON object, for example:
+
+     {
+       "status": "ok",
+       "incidents_created": N,
+       "events_processed": M
+     }
+
+   - On error, return a JSON error payload with an appropriate HTTP status:
+
+     raise HTTPException(
+       status_code=500,
+       detail={"status": "error", "message": "Black Box engine failure", "reason": str(e)}
+     )
+
+   - Never return plain text or HTML from this endpoint.
+
+5) Harden the frontend call
+   - In the incidents / blackbox UI JS (incidents.html, blackbox.html, or app.js):
+     - Wrap the fetch for /api/blackbox/engine/run in try/catch.
+     - Check response.ok before calling response.json().
+     - If not ok, show a user-friendly error banner instead of crashing:
+
+       if (!response.ok) {
+         const text = await response.text();
+         console.error("BlackBox engine error", text);
+         showError("Black Box engine failed. Please check logs.");
+         return;
+       }
+
+6) Run validation
+   - Open the Black Box page in the browser and click the button that triggers the engine.
+   - Confirm:
+     * No 500 error anymore
+     * The JSON response is parsed correctly
+     * The UI shows either:
+       - number of incidents processed, or
+       - a clear error message if the engine has nothing to process yet.
+
+7) Final check
+   - Confirm that:
+     * No destructive DB migrations were added.
+     * All changes are additive only.
+     * Tenant isolation and RBAC are still enforced.
+   - Then give me a short summary of:
+     * What was the root cause of the 500 error.
+     * Which files and lines you changed.
+     * How to manually re-trigger the Black Box engine for testing.
