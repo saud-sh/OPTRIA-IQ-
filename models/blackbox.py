@@ -318,3 +318,139 @@ RCA_CATEGORIES = [
     "MATERIAL_DEFECT",
     "UNKNOWN"
 ]
+
+
+class TwinLayout(Base):
+    """
+    Digital Twin layout configuration per site.
+    Stores layout dimensions, background, and visualization settings.
+    """
+    __tablename__ = "twin_layouts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    site_id = Column(Integer, ForeignKey("sites.id"), nullable=True, index=True)
+    
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    config = Column(JSONB, default={})
+    
+    width = Column(Integer, default=1200)
+    height = Column(Integer, default=800)
+    background_image = Column(String(500), nullable=True)
+    background_color = Column(String(20), default="#f5f5f5")
+    
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    nodes = relationship("TwinNode", back_populates="layout", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index('ix_twin_layouts_tenant_site', 'tenant_id', 'site_id'),
+    )
+    
+    def to_dict(self, include_nodes=False):
+        result = {
+            "id": self.id,
+            "tenant_id": self.tenant_id,
+            "site_id": self.site_id,
+            "name": self.name,
+            "description": self.description,
+            "config": self.config or {},
+            "width": self.width,
+            "height": self.height,
+            "background_image": self.background_image,
+            "background_color": self.background_color,
+            "is_active": self.is_active,
+            "is_default": self.is_default,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+        if include_nodes and self.nodes:
+            result["nodes"] = [n.to_dict() for n in self.nodes]
+        return result
+
+
+class TwinNode(Base):
+    """
+    Digital Twin node representing an asset or element in the visualization.
+    Stores position, styling, and asset mapping for the twin layout.
+    """
+    __tablename__ = "twin_nodes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    layout_id = Column(Integer, ForeignKey("twin_layouts.id", ondelete="CASCADE"), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True, index=True)
+    
+    node_type = Column(String(50), nullable=False, default="asset")
+    label = Column(String(255), nullable=True)
+    
+    position_x = Column(Integer, default=0)
+    position_y = Column(Integer, default=0)
+    width = Column(Integer, default=100)
+    height = Column(Integer, default=80)
+    rotation = Column(Integer, default=0)
+    
+    icon = Column(String(100), nullable=True)
+    color = Column(String(20), default="#3b82f6")
+    style = Column(JSONB, default={})
+    
+    parent_node_id = Column(Integer, ForeignKey("twin_nodes.id"), nullable=True)
+    
+    data_bindings = Column(JSONB, default={})
+    
+    z_index = Column(Integer, default=0)
+    is_visible = Column(Boolean, default=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    layout = relationship("TwinLayout", back_populates="nodes")
+    
+    __table_args__ = (
+        Index('ix_twin_nodes_tenant_layout', 'tenant_id', 'layout_id'),
+        Index('ix_twin_nodes_tenant_asset', 'tenant_id', 'asset_id'),
+    )
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tenant_id": self.tenant_id,
+            "layout_id": self.layout_id,
+            "asset_id": self.asset_id,
+            "node_type": self.node_type,
+            "label": self.label,
+            "position_x": self.position_x,
+            "position_y": self.position_y,
+            "width": self.width,
+            "height": self.height,
+            "rotation": self.rotation,
+            "icon": self.icon,
+            "color": self.color,
+            "style": self.style or {},
+            "parent_node_id": self.parent_node_id,
+            "data_bindings": self.data_bindings or {},
+            "z_index": self.z_index,
+            "is_visible": self.is_visible,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+NODE_TYPES = [
+    "asset",
+    "pump",
+    "compressor",
+    "tank",
+    "valve",
+    "sensor",
+    "pipe",
+    "group",
+    "label",
+    "connection"
+]

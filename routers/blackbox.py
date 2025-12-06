@@ -122,6 +122,24 @@ async def create_event(
     if not has_capability(current_user, "run_optimization"):
         raise HTTPException(status_code=403, detail="Not authorized")
     
+    from models.asset import Asset, Site
+    
+    if event_data.asset_id:
+        asset = db.query(Asset).filter(
+            Asset.id == event_data.asset_id,
+            Asset.tenant_id == current_user.tenant_id
+        ).first()
+        if not asset:
+            raise HTTPException(status_code=400, detail="Asset not found or does not belong to your organization")
+    
+    if event_data.site_id:
+        site = db.query(Site).filter(
+            Site.id == event_data.site_id,
+            Site.tenant_id == current_user.tenant_id
+        ).first()
+        if not site:
+            raise HTTPException(status_code=400, detail="Site not found or does not belong to your organization")
+    
     event = BlackBoxEvent(
         tenant_id=current_user.tenant_id,
         asset_id=event_data.asset_id,
@@ -220,6 +238,24 @@ async def create_incident(
     """Create a manual incident"""
     if not has_capability(current_user, "run_optimization"):
         raise HTTPException(status_code=403, detail="Not authorized")
+    
+    from models.asset import Asset, Site
+    
+    if incident_data.root_asset_id:
+        asset = db.query(Asset).filter(
+            Asset.id == incident_data.root_asset_id,
+            Asset.tenant_id == current_user.tenant_id
+        ).first()
+        if not asset:
+            raise HTTPException(status_code=400, detail="Asset not found or does not belong to your organization")
+    
+    if incident_data.site_id:
+        site = db.query(Site).filter(
+            Site.id == incident_data.site_id,
+            Site.tenant_id == current_user.tenant_id
+        ).first()
+        if not site:
+            raise HTTPException(status_code=400, detail="Site not found or does not belong to your organization")
     
     incident = BlackBoxIncident(
         tenant_id=current_user.tenant_id,
