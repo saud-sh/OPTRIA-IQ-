@@ -1,0 +1,181 @@
+You are working on the existing OPTRIA IQ FastAPI + Jinja2 + PostgreSQL project.
+
+⚠️ CRITICAL RULES
+- DO NOT change the existing stack or folder structure.
+- DO NOT remove or rename any existing models, routers, or templates.
+- DO NOT run destructive migrations (no DROP TABLE / DROP COLUMN).
+- All DB changes must be ADDITIVE ONLY.
+- Multi-tenant isolation (tenant_id) and RBAC MUST stay exactly as implemented.
+
+CONTEXT (CURRENT STATE)
+- The platform is production-ready and already deployed.
+- Multi-tenant, RBAC, optimization engine, digital twin, and industrial black box are implemented.
+- Global secrets are already set in Replit App Secrets, including:
+  - DATABASE_URL
+  - SESSION_SECRET
+  - OPENAI_API_KEY
+  - PI_BASE_URL
+  - SAP_BASE_URL
+  - OPCUA_ENDPOINT_URL
+  - OPCUA_USERNAME / OPCUA_PASSWORD (placeholders)
+  - BASE_URL = https://optria.rocktech.sa
+  - DEMO_MODE = true
+- Tenants exist including:
+  - Platform owner: admin@optria.io / OptriA2024!
+  - Demo tenant ARAMCO_DEMO with user: demo@aramco.com / Demo2024!
+
+OBJECTIVE
+I want the demo tenant **ARAMCO_DEMO** to have a fully working end-to-end demo of:
+1) Industrial integrations (PI / OPCUA / Demo connector)
+2) Digital Twin with live/demo data
+3) Industrial Black Box reading from the same data streams
+
+The global secrets (PI_BASE_URL, OPCUA_ENDPOINT_URL, SAP_BASE_URL, BASE_URL) should act as DEFAULTS, but each tenant must still have its own TenantIntegration records.
+
+Please do ALL of the following WITHOUT breaking any existing feature:
+
+------------------------------------------------
+1) VERIFY GLOBAL CONFIG / SECRETS WIRING
+------------------------------------------------
+- Confirm that:
+  - settings.pi_base_url reads PI_BASE_URL
+  - settings.sap_base_url reads SAP_BASE_URL
+  - settings.opcua_endpoint_url (or equivalent) reads OPCUA_ENDPOINT_URL
+  - settings.base_url reads BASE_URL (if not, add it in config.py)
+- In /internal/config/status:
+  - Add non-sensitive indicators for:
+    - base_url_configured (true/false)
+    - opcua_endpoint_configured (true/false)
+  - Do NOT expose any real secret values, only booleans / “configured|empty”.
+
+------------------------------------------------
+2) SEED DEMO INTEGRATIONS FOR ARAMCO_DEMO
+------------------------------------------------
+Goal: When I log in as demo@aramco.com (tenant ARAMCO_DEMO) and open “Integrations → Data Sources”, I should see ready-made demo integrations.
+
+Implement:
+
+- Find the tenant with code = "ARAMCO_DEMO".
+- If NOT found, do nothing and just log a warning.
+- If found, create (ADD ONLY, don’t touch other tenants):
+
+  a) TenantIntegration: "Demo OPCUA – ARAMCO"
+     - tenant_id = ARAMCO_DEMO.id
+     - connector_type = "opcua"
+     - status = "active"
+     - config JSON:
+       - endpoint_url: (if empty, fall back to settings.opcua_endpoint_url)
+       - auth_type: "Anonymous"
+       - security_mode: "None"
+       - any other required fields from the opcua connector schema
+
+  b) TenantIntegration: "Demo PI – ARAMCO"
+     - tenant_id = ARAMCO_DEMO.id
+     - connector_type = "pi"
+     - status = "active"
+     - config JSON:
+       - pi_webapi_url: (if empty, fall back to settings.pi_base_url)
+       - auth_type: "Basic" or "Token" (choose what the connector supports)
+       - username/token can be left empty for demo, but handled safely.
+
+- Make sure seeding code is:
+  - Idempotent (running it twice does NOT duplicate entries).
+  - Runs on startup in DEMO_MODE=true only.
+
+------------------------------------------------
+3) CONNECT DIGITAL TWIN TO DEMO INTEGRATIONS
+------------------------------------------------
+- Review the Digital Twin backend (e.g. routers/twin.py, core/twin_service.py, etc.).
+- For tenant ARAMCO_DEMO:
+  - Make sure the Digital Twin asset list can pull data from:
+    - The demo connector / OPCUA connector for that tenant.
+  - If there is a demo data generator, ensure it can use TenantIntegration, not only a global demo connector.
+- The API `/api/twins/assets` must:
+  - Filter by current_user.tenant_id.
+  - For each asset, include:
+    - health score
+    - connectivity / live data status (e.g. live, simulated, disconnected).
+- Do NOT change the Digital Twin UI structure, only make sure it actually uses the seeded integrations and demo data for ARAMCO_DEMO.
+
+------------------------------------------------
+4) CONNECT BLACK BOX TO THE SAME DATA
+------------------------------------------------
+- Review the Black Box engine (core/blackbox_engine.py and related routers).
+- Ensure that:
+  - Event collectors can read simulated data / alerts / work orders for ARAMCO_DEMO.
+  - If needed, add a simple “demo event generator” that uses the same assets and integrations as the Digital Twin.
+- On the Black Box page for ARAMCO_DEMO:
+  - When I click “تشغيل الكشف” (Run Detection), the system should:
+    - Scan recent events for that tenant.
+    - Create at least a few demo incidents so the UI is not empty.
+- All new data MUST be tenant-scoped (tenant_id required).
+
+------------------------------------------------
+5) TENANT USER MANAGEMENT ENHANCEMENT
+------------------------------------------------
+- Currently:
+  - Platform owner can create tenants.
+  - Tenants can integrate with external identity providers (Azure AD / etc.).
+- I ALSO need:
+  - Tenant admin to be able to create **local users** inside his tenant (in addition to SSO).
+- Implement or verify:
+  - A UI page under “Users / المستخدمون” for tenant_admin:
+    - List users for current tenant_id.
+    - Create basic local user (email, name, role, password).
+    - Edit role / activate / deactivate.
+  - Backend:
+    - All CRUD ops limited to current_user.tenant_id.
+    - Passwords hashed with bcrypt as already done in the platform.
+  - Do NOT change platform owner behavior or global tenant management.
+
+------------------------------------------------
+6) IMPROVE INTEGRATION SMOKE TEST (OPTIONAL BUT USEFUL)
+------------------------------------------------
+- Update `scripts/integration_smoke_test.py` to:
+  - Optionally accept a BASE_URL from environment (BASE_URL secret).
+  - Optionally take a tenant code (e.g. ARAMCO_DEMO) and:
+    - Log in as a demo admin (demo@aramco.com).
+    - Call:
+      - /integrations (to verify seeded integrations are visible).
+      - /api/twins/assets (to verify Digital Twin returns data).
+      - /blackbox (or its API) to verify the service responds.
+- This script is for the platform owner only and MUST NOT modify any data, only read/verify.
+
+------------------------------------------------
+7) UI / UX POLISH (LIGHT TOUCH)
+------------------------------------------------
+Without breaking the current RTL/LTR support:
+
+- In the “Integrations → Data Sources” page:
+  - Highlight seeded demo connectors (e.g. small badge “Demo”).
+  - Show last sync status and connector type more clearly.
+
+- In the Black Box page:
+  - Make sure empty states guide the user:
+    - Example: “لا توجد حوادث بعد – قم بتشغيل الكشف لبدء تجميع الأحداث من التكاملات النشطة في هذا المستأجر”.
+
+Do NOT introduce any heavy JS frameworks. Keep using Jinja2 + Tailwind + Alpine.js as in the current project.
+
+------------------------------------------------
+8) VERIFICATION & SUMMARY
+------------------------------------------------
+After implementing all changes:
+
+1) Run:
+   - python scripts/smoke_test_e2e.py
+   - python scripts/integration_smoke_test.py
+2) Manually verify:
+   - Login as admin@optria.io → /internal/config/status shows all configs as “configured” where applicable.
+   - Login as demo@aramco.com:
+     - See seeded integrations in “Integrations → Data Sources”.
+     - Can click “Test” and get a success response (even if simulated).
+     - Digital Twin shows assets with live/simulated status.
+     - Black Box can run detection and show at least demo incidents.
+
+Finally:
+- Write a short SUMMARY in Markdown explaining:
+  - What was added.
+  - Which tables/models were touched.
+  - How demo ARAMCO_DEMO tenant now experiences integrations + digital twin + black box end-to-end.
+
+DO NOT start from scratch. Only extend and refine the existing OPTRIA IQ implementation.
