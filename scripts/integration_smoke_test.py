@@ -62,6 +62,27 @@ def test_config_status(session: requests.Session) -> dict:
         print(f"  ✗ Failed: {response.status_code}")
         return {}
 
+def test_blackbox_incidents(session: requests.Session) -> list:
+    """Test Black Box incidents endpoint"""
+    print_step("Testing /api/blackbox/incidents (Black Box Incidents)")
+    
+    response = session.get(f"{BASE_URL}/api/blackbox/incidents?limit=10")
+    
+    if response.status_code == 200:
+        data = response.json()
+        incidents = data.get("incidents", [])
+        print(f"  Found {len(incidents)} incident(s)")
+        
+        for incident in incidents[:5]:
+            status = incident.get("status", "unknown")
+            severity = incident.get("severity", "unknown")
+            print(f"  • [{incident.get('incident_number')}] {incident.get('title')} ({severity}, {status})")
+        
+        return incidents
+    else:
+        print(f"  ✗ Failed: {response.status_code}")
+        return []
+
 def test_integrations_list(session: requests.Session) -> list:
     """Test listing integrations"""
     print_step("Testing /api/integrations/ (list integrations)")
@@ -247,6 +268,8 @@ def main():
         tenant_session = owner_session
     
     integrations = test_integrations_list(tenant_session)
+    
+    incidents = test_blackbox_incidents(tenant_session)
     
     opcua_tested = False
     pi_tested = False

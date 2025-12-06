@@ -648,13 +648,59 @@ async def run_full_pipeline(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Run complete Black Box pipeline (collect + detect)"""
+    """Run complete Black Box pipeline (collect + detect), or seed demo data in DEMO_MODE"""
     if not has_capability(current_user, "manage_integrations"):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    result = run_blackbox_pipeline(db, current_user.tenant_id)
+    from config import settings
+    
+    if settings.demo_mode:
+        from main import seed_blackbox_demo_data_refresh
+        seed_blackbox_demo_data_refresh(db, current_user.tenant_id)
+        result = {"demo_data_refreshed": True}
+    else:
+        result = run_blackbox_pipeline(db, current_user.tenant_id)
     
     return {"success": True, "pipeline_result": result}
+
+
+@router.get("/incidents/{incident_id}/events")
+async def get_incident_events(
+    incident_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all events for a specific incident, ordered by timestamp"""
+    if not has_capability(current_user, "view_assets"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    incident = db.query(BlackBoxIncident).filter(
+        BlackBoxIncident.id == incident_id,
+        BlackBoxIncident.tenant_id == current_user.tenant_id
+    ).first()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    incident_events = db.query(BlackBoxIncidentEvent).filter(
+        BlackBoxIncidentEvent.incident_id == incident_id
+    ).order_by(BlackBoxIncidentEvent.sequence_order.asc()).all()
+    
+    events_with_details = []
+    for ie in incident_events:
+        event = db.query(BlackBoxEvent).filter(BlackBoxEvent.id == ie.event_id).first()
+        if event:
+            event_data = event.to_dict()
+            event_data["role"] = ie.role
+            event_data["sequence_order"] = ie.sequence_order
+            event_data["notes"] = ie.notes
+            events_with_details.append(event_data)
+    
+    return {
+        "incident_id": str(incident_id),
+        "events": events_with_details,
+        "total_events": len(events_with_details)
+    }
 
 
 @router.get("/stats")

@@ -1,0 +1,75 @@
+I see that the core platform, Digital Twin, and integrations are working and the smoke tests are green, but the Industrial Black Box UI is still empty (no incidents/events for the ARAMCO_DEMO tenant).
+
+I need you to add a non-destructive demo seeding layer specifically for the Black Box, without touching existing production-safe logic. Please do the following:
+
+Black Box Demo Seeder
+
+Create a function like seed_blackbox_demo_data(tenant_code="ARAMCO_DEMO") that:
+
+Finds the ARAMCO_DEMO tenant (or returns if not found).
+
+Picks 3–5 existing demo assets for that tenant.
+
+Inserts a small set of BlackBoxIncident records for this tenant (e.g. pump trip, high vibration, high temperature).
+
+For each incident, inserts 20–50 related events in the Black Box event table (whatever table you use internally: sensor readings, alerts, work orders, operator actions).
+
+Make sure every new record has tenant_id set correctly.
+
+Call this seeder only when:
+
+APP_ENV = "development"
+
+DEMO_MODE = true
+
+And data is not already present (idempotent: don’t duplicate incidents on every startup).
+
+Wire the “تشغيل الكشف / Run Detection” button
+
+On the Black Box landing page, the top button says “تشغيل الكشف” (Run Detection).
+
+Make sure clicking this button:
+
+Triggers either:
+
+a) a background job that scans recent alerts / sensor anomalies and creates incidents, or
+
+b) in DEMO_MODE, simply calls seed_blackbox_demo_data again to refresh the sample incidents.
+
+Returns a clear success/error message in the UI (toast or inline).
+
+Minimal Timeline Endpoint
+
+Expose a simple read-only API to support the UI later:
+
+GET /api/blackbox/incidents → list of incidents for the current tenant
+
+GET /api/blackbox/incidents/{id}/events → ordered list of events (by timestamp) for that incident
+
+Ensure:
+
+tenant isolation via tenant_id filter
+
+RBAC decorators (require_tenant_access) are applied
+
+No secrets or sensitive config are leaked in responses.
+
+Verification
+
+After implementing:
+
+Run the existing smoke tests.
+
+Add a very small check in integration_smoke_test.py that:
+
+Logs in as demo@aramco.com
+
+Calls /api/blackbox/incidents
+
+Confirms that at least 1 incident is returned for ARAMCO_DEMO.
+
+Confirm that in the UI:
+
+Logging in as demo@aramco.com and opening the Black Box page shows several demo incidents with different severities.
+
+Please keep everything additive, tenant-safe, and development-only for the seeding logic. Do not remove or refactor existing Black Box code – just add the seeding and API endpoints required to make the UI actually show demo incidents.

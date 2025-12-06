@@ -365,6 +365,22 @@ def seed_demo_ai_scores(db: Session, tenant: Tenant):
     db.commit()
     print(f"  Created AI scores for {len(assets)} assets in {tenant.code}")
 
+def seed_blackbox_demo_data_refresh(db: Session, tenant_id: int):
+    """Refresh Black Box demo data for a tenant (idempotent - called by engine/run button)"""
+    import random
+    import uuid
+    from datetime import timedelta
+    
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        return
+    
+    assets = db.query(Asset).filter(Asset.tenant_id == tenant_id).all()
+    if not assets:
+        return
+    
+    seed_blackbox_demo_data(db, tenant)
+
 def seed_demo_blackbox_data(db: Session, tenant: Tenant):
     """Seed demo Black Box events and incidents"""
     import random
