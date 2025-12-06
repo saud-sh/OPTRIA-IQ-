@@ -1071,3 +1071,54 @@ async def update_onboarding_progress(
     db.commit()
     
     return progress.to_dict()
+
+@router.get("/external-db/test-sample")
+async def test_external_db_sample(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Test external SQL database connection using EXTERNAL_SQL_URL.
+    Platform owner only - tests the global default connection.
+    """
+    if current_user.role != "platform_owner":
+        raise HTTPException(status_code=403, detail="Only platform owners can test external database connections")
+    
+    try:
+        from core.connectors.sql import SQLConnector
+        from config import settings
+        
+        if not settings.external_sql_url:
+            return {
+                "success": False,
+                "message": "EXTERNAL_SQL_URL is not configured",
+                "details": {
+                    "db_type": "postgresql",
+                    "used_global_default": False
+                }
+            }
+        
+        # Create a connector with the global default URL
+        connector = SQLConnector({
+            "connection_string": settings.external_sql_url,
+            "database_type": "postgresql"
+        })
+        
+        # Run the test query
+        success, message, details = connector.test_sample_query()
+        
+        return {
+            "success": success,
+            "message": message,
+            "details": details
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error testing external database: {str(e)}",
+            "details": {
+                "db_type": "postgresql",
+                "used_global_default": False
+            }
+        }

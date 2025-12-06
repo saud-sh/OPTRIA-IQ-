@@ -92,6 +92,54 @@ class SQLConnector(BaseConnector):
     def execute_query(self, query: str) -> List[Dict]:
         return []
     
+    def test_sample_query(self) -> tuple[bool, str, dict]:
+        """
+        Test the SQL connection with a simple read-only query.
+        Returns (success: bool, message: str, details: dict)
+        """
+        if not self.connection_string:
+            return False, "No connection string configured", {"db_type": self.database_type, "used_global_default": False}
+        
+        try:
+            # Attempt to import psycopg2 for PostgreSQL
+            import psycopg2
+            
+            # Parse the connection string to extract database info safely
+            used_global_default = False
+            try:
+                from config import settings
+                if self.connection_string == settings.external_sql_url:
+                    used_global_default = True
+            except:
+                pass
+            
+            # Try to connect and run a simple query
+            conn = psycopg2.connect(self.connection_string)
+            cursor = conn.cursor()
+            
+            # Simple read-only test query
+            cursor.execute("SELECT NOW() as current_time;")
+            result = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            message = f"Successfully connected and executed test query. Database time: {result[0] if result else 'unknown'}"
+            return True, message, {
+                "db_type": self.database_type,
+                "used_global_default": used_global_default,
+                "test_query": "SELECT NOW()"
+            }
+            
+        except ImportError:
+            return False, "psycopg2 not available for PostgreSQL connections", {"db_type": self.database_type, "used_global_default": False}
+        except Exception as e:
+            error_msg = str(e)
+            # Sanitize error message to not expose credentials
+            if "@" in error_msg:
+                error_msg = error_msg.split("@")[0] + "@[REDACTED]"
+            return False, f"Connection test failed: {error_msg}", {"db_type": self.database_type, "used_global_default": used_global_default if 'used_global_default' in locals() else False}
+    
     @staticmethod
     def get_config_schema() -> Dict[str, Any]:
         return {
