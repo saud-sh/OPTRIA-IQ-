@@ -74,6 +74,18 @@
                             <span class="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
                             Demo stream active
                         </p>
+                        <p x-show="integration.integration_type === 'sql' && !integration.config?.connection_string" class="text-blue-600 text-xs flex items-start gap-1">
+                            <span class="w-4 h-4 flex-shrink-0 mt-0.5">ℹ️</span>
+                            <span>Using platform default connection. Configure custom connection details to override.</span>
+                        </p>
+                        <p x-show="integration.integration_type === 'pi' && !integration.config?.pi_webapi_url" class="text-blue-600 text-xs flex items-start gap-1">
+                            <span class="w-4 h-4 flex-shrink-0 mt-0.5">ℹ️</span>
+                            <span>Leave empty to use platform default PI URL if configured.</span>
+                        </p>
+                        <p x-show="integration.integration_type === 'sap' && !integration.config?.sap_url" class="text-blue-600 text-xs flex items-start gap-1">
+                            <span class="w-4 h-4 flex-shrink-0 mt-0.5">ℹ️</span>
+                            <span>Leave empty to use platform default SAP URL if configured.</span>
+                        </p>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-2 mb-3">

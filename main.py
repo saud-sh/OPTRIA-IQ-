@@ -243,6 +243,30 @@ def seed_demo_integrations(db: Session, tenant: Tenant):
         db.add(demo_integration)
         print(f"  Created Demo Data Generator for {tenant.code}")
     
+    # Seed external SQL integration if EXTERNAL_DB_ENABLE and EXTERNAL_SQL_URL are configured
+    if settings.external_db_enable and settings.external_sql_url:
+        existing_sql = db.query(TenantIntegration).filter(
+            TenantIntegration.tenant_id == tenant.id,
+            TenantIntegration.integration_type == "sql"
+        ).first()
+        
+        if not existing_sql:
+            sql_integration = TenantIntegration(
+                tenant_id=tenant.id,
+                name="External Database - ARAMCO",
+                integration_type="sql",
+                status="active",
+                config={
+                    "database_type": "postgresql",
+                    "connection_string": "",
+                    "is_demo": True
+                },
+                is_active=True,
+                demo_stream_active=False
+            )
+            db.add(sql_integration)
+            print(f"  Created External Database integration for {tenant.code} (using global default)")
+    
     existing_cost_model = db.query(TenantCostModel).filter(
         TenantCostModel.tenant_id == tenant.id,
         TenantCostModel.is_active == True

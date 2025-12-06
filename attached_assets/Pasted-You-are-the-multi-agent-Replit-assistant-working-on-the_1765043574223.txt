@@ -1,0 +1,245 @@
+You are the multi-agent Replit assistant working on the OPTRIA IQ project.
+
+### CONTEXT
+
+- Stack: FastAPI + Jinja2 + PostgreSQL (Neon) + SQLAlchemy.
+- Multi-tenant SaaS, RBAC, optimization engine, digital twin, and black box already implemented.
+- Secrets are managed via Replit **App Secrets** and read in `config.py` using the `Settings` class (pydantic BaseSettings).
+- We recently added several secrets, including:
+  - `DATABASE_URL`
+  - `SESSION_SECRET`
+  - `OPENAI_API_KEY`
+  - `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+  - Feature flags: `DEMO_MODE`, `APP_ENV`, `OPTIMIZATION_ENGINE_ENABLED`, `EXTERNAL_DB_ENABLE`
+  - Connector defaults: `PI_BASE_URL`, `SAP_BASE_URL`, `OPCUA_USERNAME`, `OPCUA_PASSWORD`, `OPCUA_ENDPOINT_URL`
+  - App URL: `BASE_URL`
+  - NEW: `EXTERNAL_SQL_URL` pointing to a public Postgres demo DB:
+    `postgresql://samples.leantraining.ai/public_demo`
+
+The current `Settings` class in `config.py` looks roughly like:
+
+```python
+class Settings(BaseSettings):
+    database_url: str = os.getenv("DATABASE_URL", "")
+    session_secret: str = os.getenv("SESSION_SECRET", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+
+    pg_host: str = os.getenv("PGHOST", "localhost")
+    pg_port: str = os.getenv("PGPORT", "5432")
+    pg_user: str = os.getenv("PGUSER", "postgres")
+    pg_password: str = os.getenv("PGPASSWORD", "")
+    pg_database: str = os.getenv("PGDATABASE", "optria")
+
+    demo_mode: bool = os.getenv("DEMO_MODE", "true").lower() == "true"
+    app_env: str = os.getenv("APP_ENV", "development")
+    optimization_engine_enabled: bool = os.getenv("OPTIMIZATION_ENGINE_ENABLED", "true").lower() == "true"
+    external_db_enable: bool = os.getenv("EXTERNAL_DB_ENABLE", "true").lower() == "true"
+
+    pi_base_url: str = os.getenv("PI_BASE_URL", "")
+    sap_base_url: str = os.getenv("SAP_BASE_URL", "")
+    opcua_username: str = os.getenv("OPCUA_USERNAME", "")
+    opcua_password: str = os.getenv("OPCUA_PASSWORD", "")
+    opcua_endpoint_url: str = os.getenv("OPCUA_ENDPOINT_URL", "")
+
+    base_url: str = os.getenv("BASE_URL", "https://optria.rocktech.sa")
+
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 24
+    app_name: str = "OPTRIA IQ"
+    app_version: str = "1.0.0"
+    debug: bool = app_env == "development"
+
+    class Config:
+        env_file = ".env"
+        extra = "allow"
+
+    def validate_required_secrets(self):
+        missing = []
+        if not self.database_url:
+            missing.append("DATABASE_URL")
+        if not self.session_secret:
+            missing.append("SESSION_SECRET")
+        if not self.openai_api_key:
+            missing.append("OPENAI_API_KEY")
+        if missing:
+            raise ValueError(...)
+We want to fully wire EXTERNAL_SQL_URL into the platform and verify all secrets & connector defaults are correctly recognized and visible via diagnostics.
+
+ABSOLUTE RULES (INTERORIS PROTOCOL)
+NO destructive DB migrations (no DROP TABLE/COLUMN, no CASCADE, no schema changes that break existing data).
+
+Changes MUST be additive and backwards-compatible.
+
+Maintain multi-tenant isolation and RBAC as-is.
+
+Do NOT change existing auth flows, optimization logic, or main application behavior.
+
+Keep the current stack (FastAPI + Jinja2) exactly as it is.
+
+TASK 1 – Wire EXTERNAL_SQL_URL into Settings
+Update config.py:
+
+Add a new field to Settings:
+
+python
+Copy code
+external_sql_url: str = os.getenv("EXTERNAL_SQL_URL", "")
+Do NOT add it to validate_required_secrets() (it is optional, not required).
+
+Keep all existing behavior untouched.
+
+Ensure get_settings() still works with lru_cache and that no validation breaks at startup.
+
+TASK 2 – Use external_sql_url in SQL Connector
+In core/connectors/sql.py (or wherever the “External Database” connector is implemented):
+
+Load settings = get_settings() from config.py.
+
+Implement a fallback pattern for the connector configuration:
+
+If the tenant’s integration config contains a full connection string / host/user/password, use that.
+
+Otherwise, if settings.external_sql_url is non-empty, use it as a global default for the External Database connector.
+
+If both are missing, return a clear error indicating that no SQL connection is configured.
+
+Ensure the connector NEVER leaks secrets in logs:
+
+Do not print the full connection string.
+
+Log sanitized info only (e.g., DB type and host without credentials).
+
+Make sure this logic is tenant-safe:
+
+The global external_sql_url is used only as a default value, while tenant-specific overrides still take precedence.
+
+TASK 3 – Reflect EXTERNAL_SQL_URL in Integrations UI
+In routers/integrations.py and the relevant templates (e.g., templates/integrations/index.html):
+
+When building the schema/metadata for the External Database connector, include helper text similar to PI/SAP:
+
+Indicate that leaving the connection fields empty will use the global default (EXTERNAL_SQL_URL) if configured.
+
+Example helper text:
+“Leave empty to use the platform default connection (if configured by the platform owner).”
+
+You do NOT need to expose the actual URL in the UI; just expose the fact that a global default exists.
+
+Make sure multi-tenant behavior is preserved:
+
+Tenant-specific External Database integration can override global defaults by providing its own connection details.
+
+TASK 4 – Update /internal/config/status Diagnostics
+In routers/health.py, the /internal/config/status endpoint already returns a JSON status for subsystems (database, OpenAI, PI, SAP, OPC-UA, etc.).
+
+Extend the subsystems section to include external_sql_default:
+
+json
+Copy code
+"external_sql_default": {
+    "status": "configured" | "empty",
+    "has_url": true | false
+}
+has_url is true if settings.external_sql_url is non-empty.
+
+status is "configured" if has_url is true, otherwise "empty".
+
+While you are there, double-check that:
+
+pi_default_config, sap_default_config, and opcua_default_creds all derive from the values in Settings (PI_BASE_URL, SAP_BASE_URL, OPCUA_USERNAME/PASSWORD, OPCUA_ENDPOINT_URL).
+
+No actual secret values are returned—only booleans/“configured vs empty” flags.
+
+Confirm that access control is still enforced:
+
+Only platform_owner can call /internal/config/status.
+
+TASK 5 – Seed a Demo External SQL Integration (Optional but Preferred)
+We want the ARAMCO demo tenant (code = ARAMCO_DEMO) to have a ready-to-use External Database integration using EXTERNAL_SQL_URL.
+
+In the existing demo seeding logic (e.g., seed_existing_demo_tenant() or similar), add:
+
+A check for an existing External Database integration for the demo tenant.
+
+If none exists AND settings.external_sql_url is non-empty AND EXTERNAL_DB_ENABLE is true:
+
+Create a TenantIntegration of type sql (or whatever type you use for external DB).
+
+Store minimal config (optionally empty, so connector will use global default).
+
+Mark it as active.
+
+This seeding must be idempotent:
+
+Running the app multiple times should not create duplicate demo integrations.
+
+Do NOT affect real tenants—only the demo tenant(s).
+
+TASK 6 – Verification & Tests
+After implementing the changes, do the following automatically inside Replit:
+
+Restart the app if needed, then run:
+
+bash
+Copy code
+python scripts/smoke_test_e2e.py
+Ensure all steps pass (tenant, user, site, asset, alert, work order, RBAC, tenant isolation).
+
+Run the integration smoke test:
+
+bash
+Copy code
+python scripts/integration_smoke_test.py
+Make sure it:
+
+Verifies /health, /health/live, /health/ready.
+
+Authenticates as admin@optria.io / OptriA2024!.
+
+Optionally, calls /internal/config/status and confirms:
+
+Database: OK
+
+OpenAI: configured
+
+PI/SAP/OPCUA: “configured” or “empty” according to secrets
+
+external_sql_default.has_url == true when EXTERNAL_SQL_URL is set
+
+external_db_integrations.flag == true (from EXTERNAL_DB_ENABLE)
+
+Confirm logs show no stack traces or 500 errors from:
+
+/api/integrations/*
+
+/api/twins/assets
+
+/internal/config/status
+
+TASK 7 – Short Technical Summary for the Owner
+At the end, output a concise summary (in English) covering:
+
+The exact code files touched (e.g., config.py, core/connectors/sql.py, routers/health.py, routers/integrations.py, seeding scripts).
+
+How EXTERNAL_SQL_URL is now used.
+
+How to verify from the browser:
+
+Log in as platform owner (admin@optria.io / OptriA2024!).
+
+Open /internal/config/status and check external_sql_default.
+
+Log in as ARAMCO demo tenant (demo@aramco.com / Demo2024!), go to Integrations → Data Sources and see the External Database integration.
+
+Confirmation that:
+
+No destructive migrations were performed.
+
+Multi-tenant and RBAC rules are intact.
+
+No secrets are exposed in API responses or logs.
+
+PLEASE EXECUTE ALL THESE TASKS NOW, following the Interoris Universal Protocol and keeping the existing architecture intact.
+
+yaml
+Copy code

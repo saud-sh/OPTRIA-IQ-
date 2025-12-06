@@ -123,6 +123,11 @@ async def internal_config_status(
                 "source": "BASE_URL environment variable",
                 "base_url_configured": bool(settings.base_url)
             },
+            "external_sql_default": {
+                "status": "configured" if settings.external_sql_url else "empty",
+                "source": "EXTERNAL_SQL_URL secret",
+                "has_url": bool(settings.external_sql_url)
+            },
             "demo_mode": {
                 "status": "enabled" if settings.demo_mode else "disabled",
                 "source": f"DEMO_MODE={settings.demo_mode}",
