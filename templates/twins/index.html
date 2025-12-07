@@ -285,11 +285,33 @@
                     <p class="text-xs text-gray-500 mb-2">{{ t.get('recent_incidents', 'Recent Incidents') }}</p>
                     <div class="space-y-2">
                         <template x-for="incident in assetDetail?.recent_incidents" :key="incident.id">
-                            <a :href="'/blackbox/incidents/' + incident.id + '?lang={{ lang }}'" 
-                               class="block text-xs bg-red-50 text-red-700 px-2 py-1 rounded hover:bg-red-100">
-                                <span x-text="incident.incident_number"></span> - <span x-text="incident.incident_type"></span>
-                            </a>
+                            <div class="flex items-center justify-between bg-red-50 px-2 py-1 rounded">
+                                <a :href="'/blackbox/incidents/' + incident.id + '?lang={{ lang }}'" 
+                                   class="text-xs text-red-700 hover:text-red-800">
+                                    <span x-text="incident.incident_number"></span> - <span x-text="incident.incident_type"></span>
+                                </a>
+                                <button @click="runIncidentRCA(incident.id)" 
+                                        x-show="incident.rca_status === 'PENDING'"
+                                        class="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                        :disabled="rcaRunning[incident.id]">
+                                    <span x-show="!rcaRunning[incident.id]">{{ t.get('analyze', 'Analyze') }}</span>
+                                    <span x-show="rcaRunning[incident.id]" class="inline-block animate-spin">&#8635;</span>
+                                </button>
+                                <span x-show="incident.rca_status === 'COMPLETED'" 
+                                      class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
+                                    {{ t.get('analyzed', 'Analyzed') }}
+                                </span>
+                            </div>
                         </template>
+                    </div>
+                    <div x-show="rcaResult" class="mt-3 p-2 bg-blue-50 rounded text-xs">
+                        <p class="font-medium text-blue-800">{{ t.get('rca_result', 'Analysis Result') }}</p>
+                        <p class="text-blue-700 mt-1" x-text="rcaResult?.event_story?.substring(0, 150) + '...'"></p>
+                        <p x-show="rcaResult?.work_order_created" class="text-green-700 mt-1 font-medium">
+                            &#10003; {{ t.get('work_order_created', 'Work order created') }}: 
+                            <a :href="'/work-orders/' + rcaResult?.work_order?.id + '?lang={{ lang }}'" 
+                               class="underline" x-text="rcaResult?.work_order?.code"></a>
+                        </p>
                     </div>
                 </div>
                 
@@ -329,6 +351,8 @@ function digitalTwin() {
         timeseries: {},
         loadingTimeseries: false,
         chart: null,
+        rcaRunning: {},
+        rcaResult: null,
         
         get filteredAssets() {
             if (!this.filters.search) return this.assets;
@@ -385,6 +409,7 @@ function digitalTwin() {
             this.metrics = [];
             this.selectedMetric = null;
             this.timeseries = {};
+            this.rcaResult = null;
             
             try {
                 const res = await fetch('/api/twins/assets/' + asset.id);
@@ -518,9 +543,46 @@ function digitalTwin() {
             this.metrics = [];
             this.selectedMetric = null;
             this.timeseries = {};
+            this.rcaResult = null;
             if (this.chart) {
                 this.chart.destroy();
                 this.chart = null;
+            }
+        },
+        
+        async runIncidentRCA(incidentId) {
+            this.rcaRunning[incidentId] = true;
+            this.rcaResult = null;
+            
+            try {
+                const res = await fetch(`/api/blackbox/incidents/${incidentId}/rca-full?auto_create_wo=true`, {
+                    method: 'POST'
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    this.rcaResult = data;
+                    
+                    if (this.assetDetail?.recent_incidents) {
+                        const incident = this.assetDetail.recent_incidents.find(i => i.id === incidentId);
+                        if (incident) {
+                            incident.rca_status = 'COMPLETED';
+                        }
+                    }
+                    
+                    if (data.work_order_created) {
+                        await this.selectAsset(this.selectedAsset);
+                    }
+                } else {
+                    const error = await res.json();
+                    console.error('RCA failed:', error);
+                    alert('Analysis failed: ' + (error.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('RCA request failed:', e);
+                alert('Analysis request failed');
+            } finally {
+                this.rcaRunning[incidentId] = false;
             }
         }
     };
