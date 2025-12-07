@@ -19,10 +19,12 @@ BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
 DEMO_USER = "demo@aramco.com"
 DEMO_PASSWORD = "Demo2024!"
 
+session = requests.Session()
 
-def login(email: str, password: str) -> str:
-    """Login and get access token"""
-    res = requests.post(f"{BASE_URL}/api/auth/login", json={
+
+def login(email: str, password: str) -> bool:
+    """Login and get session cookies"""
+    res = session.post(f"{BASE_URL}/api/auth/login", json={
         "email": email,
         "password": password
     })
@@ -31,22 +33,21 @@ def login(email: str, password: str) -> str:
         sys.exit(1)
     
     data = res.json()
-    token = data.get("access_token")
-    if not token:
-        print(f"FAIL: No access token in response")
+    if not data.get("success"):
+        print(f"FAIL: Login failed: {data}")
         sys.exit(1)
     
-    print(f"OK: Login successful for {email}")
-    return token
+    print(f"OK: Login successful for {email} (role: {data['user']['role']})")
+    return True
 
 
-def get_headers(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+def get_headers() -> dict:
+    return {"Content-Type": "application/json"}
 
 
-def get_assets(token: str) -> list:
+def get_assets() -> list:
     """Get list of assets"""
-    res = requests.get(f"{BASE_URL}/api/assets/", headers=get_headers(token))
+    res = session.get(f"{BASE_URL}/api/assets/", headers=get_headers())
     if res.status_code != 200:
         print(f"FAIL: Failed to get assets: {res.status_code}")
         return []
@@ -57,9 +58,9 @@ def get_assets(token: str) -> list:
     return assets
 
 
-def create_incident(token: str, asset_id: int) -> dict:
+def create_incident(asset_id: int) -> dict:
     """Create a test incident"""
-    res = requests.post(f"{BASE_URL}/api/blackbox/incidents", headers=get_headers(token), json={
+    res = session.post(f"{BASE_URL}/api/blackbox/incidents", headers=get_headers(), json={
         "incident_type": "FAILURE",
         "severity": "MAJOR",
         "title": "Test Incident - Vibration Anomaly Detected",
@@ -78,10 +79,13 @@ def create_incident(token: str, asset_id: int) -> dict:
     return incident
 
 
-def create_sensor_events(token: str, asset_id: int, incident_start: str) -> list:
+def create_sensor_events(asset_id: int, incident_start: str) -> list:
     """Create sensor events for RCA"""
     events = []
-    base_time = datetime.fromisoformat(incident_start.replace("Z", "+00:00").replace("+00:00", ""))
+    try:
+        base_time = datetime.fromisoformat(incident_start.replace("Z", "").replace("+00:00", ""))
+    except:
+        base_time = datetime.utcnow() - timedelta(hours=1)
     
     event_data = [
         {"category": "SENSOR", "summary": "Vibration level high - exceeded threshold 1.5", "severity": "WARNING", "offset": -10},
@@ -92,7 +96,7 @@ def create_sensor_events(token: str, asset_id: int, incident_start: str) -> list
     
     for ev in event_data:
         event_time = base_time + timedelta(minutes=ev["offset"])
-        res = requests.post(f"{BASE_URL}/api/blackbox/events", headers=get_headers(token), json={
+        res = session.post(f"{BASE_URL}/api/blackbox/events", headers=get_headers(), json={
             "asset_id": asset_id,
             "source_system": "PI_SYSTEM",
             "source_type": "sensor",
@@ -105,37 +109,37 @@ def create_sensor_events(token: str, asset_id: int, incident_start: str) -> list
         if res.status_code == 200:
             events.append(res.json().get("event", {}))
         else:
-            print(f"WARN: Failed to create event: {res.json()}")
+            print(f"WARN: Failed to create event: {res.status_code}")
     
     print(f"OK: Created {len(events)} sensor events")
     return events
 
 
-def link_events_to_incident(token: str, incident_id: str, events: list):
+def link_events_to_incident(incident_id: str, events: list):
     """Link events to incident"""
     roles = ["CAUSE", "CAUSE", "SYMPTOM", "SYMPTOM"]
     for i, event in enumerate(events):
         role = roles[i] if i < len(roles) else "CONTEXT"
-        res = requests.post(
+        res = session.post(
             f"{BASE_URL}/api/blackbox/incidents/{incident_id}/events",
-            headers=get_headers(token),
+            headers=get_headers(),
             json={"event_id": event.get("id"), "role": role}
         )
         if res.status_code != 200:
-            print(f"WARN: Failed to link event: {res.json()}")
+            print(f"WARN: Failed to link event: {res.status_code}")
     
     print(f"OK: Linked {len(events)} events to incident")
 
 
-def run_full_rca(token: str, incident_id: str) -> dict:
+def run_full_rca(incident_id: str) -> dict:
     """Run full RCA with work order creation"""
-    res = requests.post(
+    res = session.post(
         f"{BASE_URL}/api/blackbox/incidents/{incident_id}/rca-full?auto_create_wo=true",
-        headers=get_headers(token)
+        headers=get_headers()
     )
     
     if res.status_code != 200:
-        print(f"FAIL: RCA failed: {res.json()}")
+        print(f"FAIL: RCA failed: {res.status_code} - {res.text[:200]}")
         return {}
     
     data = res.json()
@@ -154,12 +158,12 @@ def run_full_rca(token: str, incident_id: str) -> dict:
     return data
 
 
-def verify_work_order(token: str, incident_id: str) -> dict:
+def verify_work_order(incident_id: str) -> dict:
     """Verify work order was created for the incident"""
-    res = requests.get(f"{BASE_URL}/api/work-orders/", headers=get_headers(token))
+    res = session.get(f"{BASE_URL}/api/work-orders/", headers=get_headers())
     
     if res.status_code != 200:
-        print(f"FAIL: Failed to get work orders: {res.json()}")
+        print(f"FAIL: Failed to get work orders: {res.status_code}")
         return {}
     
     data = res.json()
@@ -176,9 +180,9 @@ def verify_work_order(token: str, incident_id: str) -> dict:
     return {}
 
 
-def verify_notifications(token: str) -> list:
+def verify_notifications() -> list:
     """Verify notifications exist"""
-    res = requests.get(f"{BASE_URL}/api/notifications?limit=5", headers=get_headers(token))
+    res = session.get(f"{BASE_URL}/api/notifications?limit=5", headers=get_headers())
     
     if res.status_code != 200:
         print(f"WARN: Failed to get notifications: {res.status_code}")
@@ -192,12 +196,12 @@ def verify_notifications(token: str) -> list:
     return notifications
 
 
-def get_incident_detail(token: str, incident_id: str) -> dict:
+def get_incident_detail(incident_id: str) -> dict:
     """Get incident with RCA results"""
-    res = requests.get(f"{BASE_URL}/api/blackbox/incidents/{incident_id}", headers=get_headers(token))
+    res = session.get(f"{BASE_URL}/api/blackbox/incidents/{incident_id}", headers=get_headers())
     
     if res.status_code != 200:
-        print(f"FAIL: Failed to get incident: {res.json()}")
+        print(f"FAIL: Failed to get incident: {res.status_code}")
         return {}
     
     data = res.json()
@@ -218,9 +222,9 @@ def run_tests():
     print("RCA PIPELINE SMOKE TEST")
     print("="*60 + "\n")
     
-    token = login(DEMO_USER, DEMO_PASSWORD)
+    login(DEMO_USER, DEMO_PASSWORD)
     
-    assets = get_assets(token)
+    assets = get_assets()
     if not assets:
         print("FAIL: No assets found")
         sys.exit(1)
@@ -229,30 +233,30 @@ def run_tests():
     print(f"\nUsing test asset: {test_asset.get('name')} (ID: {test_asset.get('id')})")
     
     print("\n--- Step 1: Create Incident ---")
-    incident = create_incident(token, test_asset.get("id"))
+    incident = create_incident(test_asset.get("id"))
     if not incident:
         sys.exit(1)
     
     incident_id = incident.get("id")
     
     print("\n--- Step 2: Create Sensor Events ---")
-    events = create_sensor_events(token, test_asset.get("id"), incident.get("start_time"))
+    events = create_sensor_events(test_asset.get("id"), incident.get("start_time", ""))
     
     print("\n--- Step 3: Link Events to Incident ---")
     if events:
-        link_events_to_incident(token, incident_id, events)
+        link_events_to_incident(incident_id, events)
     
     print("\n--- Step 4: Run Full RCA Analysis ---")
-    rca_result = run_full_rca(token, incident_id)
+    rca_result = run_full_rca(incident_id)
     
     print("\n--- Step 5: Verify Work Order Creation ---")
-    work_order = verify_work_order(token, incident_id)
+    work_order = verify_work_order(incident_id)
     
     print("\n--- Step 6: Verify Notification System ---")
-    notifications = verify_notifications(token)
+    notifications = verify_notifications()
     
     print("\n--- Step 7: Verify Incident RCA Results ---")
-    incident_detail = get_incident_detail(token, incident_id)
+    incident_detail = get_incident_detail(incident_id)
     
     print("\n" + "="*60)
     print("TEST SUMMARY")
