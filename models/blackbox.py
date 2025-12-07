@@ -103,6 +103,16 @@ class BlackBoxIncident(Base):
     rca_completed_at = Column(DateTime(timezone=True), nullable=True)
     rca_completed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     
+    event_story = Column(Text, nullable=True)
+    event_story_ar = Column(Text, nullable=True)
+    root_cause_scores = Column(JSONB, default={})
+    recommended_actions = Column(JSONB, default=[])
+    financial_impact_estimate = Column(JSONB, default={})
+    carbon_impact_estimate = Column(JSONB, default={})
+    
+    auto_work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=True)
+    auto_work_order_created = Column(Boolean, default=False)
+    
     impact_estimate = Column(JSONB, default={})
     
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -139,6 +149,14 @@ class BlackBoxIncident(Base):
             "rca_status": self.rca_status,
             "rca_summary": self.rca_summary or {},  # type: ignore
             "rca_completed_at": self.rca_completed_at.isoformat() if self.rca_completed_at else None,  # type: ignore
+            "event_story": self.event_story,
+            "event_story_ar": self.event_story_ar,
+            "root_cause_scores": self.root_cause_scores or {},  # type: ignore
+            "recommended_actions": self.recommended_actions or [],  # type: ignore
+            "financial_impact_estimate": self.financial_impact_estimate or {},  # type: ignore
+            "carbon_impact_estimate": self.carbon_impact_estimate or {},  # type: ignore
+            "auto_work_order_id": self.auto_work_order_id,
+            "auto_work_order_created": self.auto_work_order_created,
             "impact_estimate": self.impact_estimate or {},  # type: ignore
             "assigned_to": self.assigned_to,
             "resolved_by": self.resolved_by,

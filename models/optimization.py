@@ -130,16 +130,21 @@ class WorkOrder(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     asset_id = Column(Integer, ForeignKey("assets.id"))
     recommendation_id = Column(Integer, ForeignKey("optimization_recommendations.id"))
+    incident_id = Column(String(255), nullable=True, index=True)
     code = Column(String(100), nullable=False)
+    work_order_number = Column(String(50), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     title_ar = Column(String(255))
     description = Column(Text)
     work_type = Column(String(50))
     priority = Column(String(20), default="medium")
     status = Column(String(20), default="open")
+    source = Column(String(50), default="MANUAL")
     assigned_to = Column(Integer, ForeignKey("users.id"))
     scheduled_date = Column(Date)
     due_date = Column(Date)
+    scheduled_start = Column(DateTime(timezone=True), nullable=True)
+    scheduled_end = Column(DateTime(timezone=True), nullable=True)
     started_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
     estimated_hours = Column(Numeric(8, 2))
@@ -154,15 +159,34 @@ class WorkOrder(Base):
             "id": self.id,
             "tenant_id": self.tenant_id,
             "asset_id": self.asset_id,
+            "incident_id": self.incident_id,
             "code": self.code,
+            "work_order_number": self.work_order_number,
             "title": self.title,
             "title_ar": self.title_ar,
             "description": self.description,
             "work_type": self.work_type,
             "priority": self.priority,
             "status": self.status,
+            "source": self.source,
             "assigned_to": self.assigned_to,
             "scheduled_date": self.scheduled_date.isoformat() if self.scheduled_date else None,
             "due_date": self.due_date.isoformat() if self.due_date else None,
-            "estimated_hours": float(self.estimated_hours) if self.estimated_hours else None
+            "scheduled_start": self.scheduled_start.isoformat() if self.scheduled_start else None,
+            "scheduled_end": self.scheduled_end.isoformat() if self.scheduled_end else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "estimated_hours": float(self.estimated_hours) if self.estimated_hours else None,
+            "actual_hours": float(self.actual_hours) if self.actual_hours else None,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None
         }
+
+
+WORK_ORDER_SOURCES = [
+    "MANUAL",
+    "BLACKBOX_AUTO",
+    "OPTIMIZATION_AUTO",
+    "SCHEDULED_PM",
+    "EXTERNAL_IMPORT"
+]
