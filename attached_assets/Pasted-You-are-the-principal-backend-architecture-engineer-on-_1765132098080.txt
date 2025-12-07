@@ -1,0 +1,421 @@
+You are the principal backend/architecture engineer on the OPTRIA IQ project.
+
+OBJECTIVE
+I want you to implement a dynamic incident-to-work-order pipeline that ties together:
+
+The Industrial Black Box (events + incidents + RCA).
+
+The Digital Twin (asset status and live signals).
+
+The Work Orders module.
+
+Our RBAC roles (platform_owner, tenant_admin, optimization_engineer, engineer, viewer).
+
+The goal:
+Whenever the Black Box or Digital Twin detects a significant incident (critical alert / high-risk anomaly), the system should:
+
+Run a proper RCA and impact estimation (based on the algorithm below).
+
+Generate an EventStory, RootCauseScore, RecommendedActions, FinancialImpactEstimate, CarbonImpactEstimate.
+
+Automatically create a Work Order for the right asset, assigned to the right user (based on role / responsibility).
+
+Notify the relevant users (at minimum: store a notification in DB or log, email/SMS can be a TODO).
+
+Enforce permissions: only users with the right roles can see/approve/close these auto-generated work orders and incidents.
+
+Do all of this without breaking any existing functionality. Keep the stack and DB constraints:
+
+FastAPI + Python
+
+Jinja2 + Tailwind + Alpine.js
+
+PostgreSQL (Neon)
+
+NO destructive migrations (only additive)
+
+STEP 0 – ANALYZE CURRENT STATE
+
+Inspect existing modules:
+
+core/blackbox_engine.py (or similar): event collectors, incident engine.
+
+routers/blackbox.py / routers/incidents.py (if present): APIs for Black Box.
+
+routers/work_orders.py: APIs for work orders.
+
+routers/twin.py or digital twin router: APIs used by Digital Twin UI.
+
+core/rbac.py: role capabilities.
+
+models/: BlackBoxIncident, BlackBoxEvent, WorkOrder, Asset, Tenant, User, etc.
+
+Confirm how incidents are currently created:
+
+Which endpoint or internal function is used to “run” the Black Box engine?
+
+Where BlackBoxIncident and BlackBoxEvent are stored.
+
+How Digital Twin currently detects “critical” or “warning” assets (from AI scores, alerts, etc.).
+
+DO NOT remove or rename existing endpoints. You may:
+
+Extend models with new columns (additive).
+
+Add new helper functions / services.
+
+Add new endpoints or background jobs.
+
+STEP 1 – IMPLEMENT RCA + IMPACT ENGINE (ALGORITHM)
+
+Implement an RCA/Impact engine using the following specification. This can live in core/blackbox_engine.py or in a new module like core/rca_engine.py, but integrate cleanly with the current Black Box incident flow.
+
+Inputs:
+
+Events: time-stamped events around the incident (alerts, sensor spikes, operator actions, config changes).
+
+HistoricalIncidents: past incidents including their patterns, root causes, and resolutions.
+
+MachineSpecs: manufacturer specs / thresholds / expected behavior (can be modeled as a config JSON / table).
+
+SensorData: time-series data (temperature, vibration, pressure, etc.) from integrated sources.
+
+MaintenanceLogs: previous work orders + failure notes for the same asset (or similar assets).
+
+EnergyData: power consumption around the incident window.
+
+CarbonFactors: CO2 factor per energy type.
+
+ThresholdDatabase: reference safe operating ranges and cost references approved by the client (per asset type / criticality).
+
+Outputs:
+
+EventStory: human-readable narrative.
+
+RootCauseScore: probability distribution of likely root causes.
+
+RecommendedActions: prioritized list.
+
+FinancialImpactEstimate: expected downtime cost (currency).
+
+CarbonImpactEstimate: CO2 emissions for the event window.
+
+ALGORITHM (IMPLEMENT THIS LOGIC):
+
+Normalize & Align timestamps
+
+For each source in {Events, SensorData, MaintenanceLogs}:
+
+Convert timestamps to UTC.
+
+Apply any known clock drift corrections if configured.
+
+Merge all streams into one unified timeline T.
+
+Sort T by event_time ascending.
+
+Detect the Event Window
+
+If any event in Events has severity == CRITICAL:
+
+anchor = that event.timestamp.
+
+Else:
+
+anchor = first significant anomaly from an anomaly_detector(SensorData)`.
+
+You can implement a simple stub anomaly detector: e.g., z-score threshold or change-point detection.
+
+Define window = [anchor - 30 minutes, anchor + 30 minutes] (make this configurable per tenant or per asset type).
+
+Extract all entries E = events inside window (Events + SensorData + MaintenanceLogs).
+
+Pattern Matching with Historical Cases
+
+For each incident in HistoricalIncidents:
+
+Compute similarity = compare(E, incident.pattern)
+(you can implement a simple similarity: overlap of event types, order, and key metrics; or a vector-based similarity).
+
+If similarity > 0.75, add to CandidateCauses.
+
+Rank CandidateCauses by similarity descending.
+
+Apply Causal Rules (Knowledge Graph)
+
+Create a simple rule engine or causal graph. Rules can be represented as JSON config or Python structures, for example:
+
+"High Vibration" → "Bearing Fault"
+
+"High Temperature" + "Low Flow" → "Pump Cavitation"
+
+"Pressure Drop" → "Valve Leakage"
+
+For each event in E:
+
+Match against these rules based on metric name, threshold exceedance, and asset type.
+
+For each matched rule, increment a likelihood score for the corresponding root cause.
+
+Combine:
+
+Scores from pattern matching (historical similarity).
+
+Scores from causal rules.
+
+Normalize to a probability distribution → RootCauseScore (e.g. { "Bearing Fault": 0.65, "Pump Cavitation": 0.25, "Other": 0.10 }).
+
+Construct the EventStory (Narrative Layer)
+
+Build EventStory as a string or JSON-friendly text, for example:
+
+"At {time}, the system detected {primary anomaly} on asset {asset_name}.
+This was preceded by:
+– {event1 summary}
+– {event2 summary}
+– {sensor trend summary}
+The most likely root cause is {TopCause} with probability {score}.
+Past similar incidents (IDs: {IncidentIDs}) showed the same pattern and were resolved by {common_action}."
+
+Estimate Financial Impact
+
+downtime_estimate = function_of(root_cause, asset_criticality, historical downtime)
+(implement a reasonable heuristic using data in ThresholdDatabase and MaintenanceLogs).
+
+cost_per_hour = ThresholdDatabase.cost_reference (per asset or per site).
+
+FinancialImpactEstimate = downtime_estimate * cost_per_hour.
+
+Estimate Carbon Impact
+
+energy_used = EnergyData in the defined window (if unavailable, fall back to typical consumption for the asset).
+
+CarbonImpactEstimate = energy_used * CarbonFactor (from CarbonFactors).
+
+Generate Recommended Actions
+
+If TopCause == "Bearing Fault":
+
+Recommended actions example:
+
+"Schedule maintenance within 12 hours."
+
+"Reduce load to 60% until bearing is replaced."
+
+Else:
+
+Recommend a generic inspection procedure derived from MachineSpecs (e.g., “Follow inspection checklist from MachineSpecs page 22.”)
+
+Return and store with the incident:
+
+EventStory
+
+RootCauseScore (top N causes and probabilities)
+
+RecommendedActions
+
+FinancialImpactEstimate
+
+CarbonImpactEstimate
+
+Persist these in appropriate columns in BlackBoxIncident (you may add JSONB/text fields additively if needed).
+
+STEP 2 – AUTO-CREATE WORK ORDERS FROM INCIDENTS
+
+Extend the Black Box engine so that after RCA is computed:
+
+For incidents where:
+
+severity >= MAJOR OR
+
+TopCause probability >= configurable threshold (e.g., 0.6)
+
+The system automatically creates a WorkOrder tied to:
+
+asset_id = incident.root_asset_id
+
+tenant_id = incident.tenant_id
+
+title derived from TopCause (e.g., "Bearing Fault detected on Pump P-101").
+
+description including EventStory + RecommendedActions.
+
+priority mapped from severity (CRITICAL → highest).
+
+status = "open" or pending_approval (configurable).
+
+source = "BLACKBOX_AUTO" (new enum/string field if needed).
+
+Assignment logic:
+
+Find users in the same tenant with roles:
+
+optimization_engineer or engineer as primary assignees.
+
+Fall back to tenant_admin if no engineers are found.
+
+Assign the work order to:
+
+The on-call engineer if such a concept exists, or
+
+The first matching engineer (for now).
+
+Notifications:
+
+Create a simple Notification model/table if not present (additive):
+
+tenant_id, user_id, type, title, body, entity_type (e.g., "work_order"), entity_id, is_read, timestamps.
+
+When a work order is auto-created:
+
+Insert a Notification row for each assignee.
+
+In the UI, at minimum:
+
+Show a notification badge / list in the header or a “Notifications” page.
+
+Email / SMS can be left as TODO but add a clear placeholder in code where they would be triggered.
+
+Wire this logic so it runs when:
+
+A new incident is created by the Black Box engine.
+
+Optionally when a user clicks a “Run RCA” / “Run Black Box” button on an asset or incident detail page.
+
+STEP 3 – CONNECT DIGITAL TWIN TO BLACK BOX & WORK ORDERS
+
+Ensure the Digital Twin asset cards / details page:
+
+Display:
+
+Current health / risk (already present).
+
+If there is any active incident from the Black Box for that asset.
+
+If there are any open work orders linked to that asset.
+
+Add actions from Digital Twin:
+
+From the asset detail view:
+
+Button “Run Black Box Analysis”:
+
+Calls the Black Box/RCA endpoint for that asset.
+
+Displays the latest EventStory, RootCauseScore, RecommendedActions.
+
+Button “Create Work Order from Incident” (if not auto-created):
+
+Calls the same auto-creation logic but manually initiated.
+
+Make sure the Digital Twin uses the Signal Mappings and integrations:
+
+If there is a mapping for the asset’s tags (e.g., PI/OPC tags), Digital Twin should:
+
+Fetch latest values from the external DB / demo connectors.
+
+Display them on the card / detail view, and they should also be available to the Black Box engine as SensorData.
+
+STEP 4 – RBAC & PERMISSIONS
+
+Strengthen / enforce RBAC so that:
+
+platform_owner:
+
+Can see all tenants, all incidents, all work orders.
+
+Can view RCA details and configuration (rules, thresholds).
+
+tenant_admin:
+
+Full access within their tenant: incidents, work orders, Digital Twin, RCA views.
+
+Can configure thresholds, incident windows, and maybe RCA rules for their tenant.
+
+optimization_engineer:
+
+Can view incidents and RCA.
+
+Can run RCA and Black Box analysis.
+
+Can create / update work orders for their tenant.
+
+engineer:
+
+Can view assigned incidents and work orders.
+
+Can update work order status, add notes, close work orders.
+
+Read-only on RCA rules/config.
+
+viewer:
+
+Read-only view on Digital Twin and high-level incident summaries.
+
+Cannot see sensitive notes if configured as such.
+
+Implementation details:
+
+Use require_tenant_access and role checks inside:
+
+Black Box endpoints.
+
+Work order creation / update endpoints.
+
+Digital Twin RCA actions.
+
+For auto-generated work orders:
+
+Ensure they respect tenant_id and RBAC when queried.
+
+STEP 5 – TESTING & VERIFICATION
+
+Add or update tests / smoke scripts:
+
+New scenario:
+
+Create a demo incident with CRITICAL severity for a demo asset.
+
+Run the Black Box / RCA engine.
+
+Assert:
+
+EventStory and RootCauseScore fields are populated.
+
+A new WorkOrder is created for that asset and tenant.
+
+The WorkOrder is assigned to a proper engineer role user.
+
+A Notification entry is created for that user.
+
+Manual test (using existing demo tenant demo@aramco.com):
+
+Log in as demo@aramco.com.
+
+Go to Digital Twin:
+
+Pick an asset.
+
+Trigger Black Box analysis from the UI.
+
+Then:
+
+Go to Black Box incidents page and confirm:
+
+New incident appears with RCA summary and impact estimates.
+
+Go to Work Orders:
+
+Confirm an auto-created work order exists, with description based on EventStory/RecommendedActions.
+
+Confirm the UI respects RBAC (viewer cannot edit, engineer can).
+
+Summarize in the console:
+
+Which files you changed.
+
+How to trigger the flow end-to-end.
+
+Any TODOs left (e.g., real email notifications, more advanced anomaly detection).
+
+DO NOT change the tech stack or remove any existing features. Keep everything additive, robust, and clearly structured.
