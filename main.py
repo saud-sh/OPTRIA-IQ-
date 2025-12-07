@@ -30,6 +30,7 @@ from routers.work_orders import router as work_orders_router
 from routers.blackbox import router as blackbox_router
 from routers.twin import router as twin_router
 from routers.tenant_users import router as tenant_users_router
+from routers.notifications import router as notifications_router
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -526,6 +527,7 @@ app.include_router(work_orders_router)
 app.include_router(blackbox_router)
 app.include_router(twin_router)
 app.include_router(tenant_users_router)
+app.include_router(notifications_router)
 
 def get_lang(request: Request) -> str:
     return request.query_params.get("lang", "ar")

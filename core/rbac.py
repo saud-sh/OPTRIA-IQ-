@@ -18,7 +18,14 @@ CAPABILITIES = {
         "view_work_orders",
         "view_audit_logs",
         "manage_cost_models",
-        "view_all_tenants"
+        "view_all_tenants",
+        "view_blackbox",
+        "manage_blackbox",
+        "run_rca",
+        "view_digital_twin",
+        "manage_digital_twin",
+        "view_notifications",
+        "manage_notifications"
     ],
     "tenant_admin": [
         "manage_tenant_users",
@@ -31,7 +38,14 @@ CAPABILITIES = {
         "manage_work_orders",
         "view_work_orders",
         "view_audit_logs",
-        "manage_cost_models"
+        "manage_cost_models",
+        "view_blackbox",
+        "manage_blackbox",
+        "run_rca",
+        "view_digital_twin",
+        "manage_digital_twin",
+        "view_notifications",
+        "manage_notifications"
     ],
     "optimization_engineer": [
         "run_optimization",
@@ -39,18 +53,28 @@ CAPABILITIES = {
         "manage_assets",
         "view_assets",
         "manage_work_orders",
-        "view_work_orders"
+        "view_work_orders",
+        "view_blackbox",
+        "manage_blackbox",
+        "run_rca",
+        "view_digital_twin",
+        "manage_digital_twin",
+        "view_notifications"
     ],
     "engineer": [
         "view_optimization",
         "view_assets",
         "manage_work_orders",
-        "view_work_orders"
+        "view_work_orders",
+        "view_blackbox",
+        "view_digital_twin",
+        "view_notifications"
     ],
     "viewer": [
         "view_optimization",
         "view_assets",
-        "view_work_orders"
+        "view_work_orders",
+        "view_notifications"
     ]
 }
 

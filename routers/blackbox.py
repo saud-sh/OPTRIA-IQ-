@@ -20,6 +20,7 @@ from models.blackbox import (
 from core.auth import get_current_user
 from core.rbac import has_capability, require_tenant_access
 from core.blackbox_engine import EventCollector, IncidentEngine, RCAEngine, run_blackbox_pipeline
+from core.rca_impact_engine import RCAImpactEngine, run_rca_and_create_work_order
 
 router = APIRouter(prefix="/api/blackbox", tags=["blackbox"])
 
@@ -473,6 +474,54 @@ async def run_rca_analysis(
         raise HTTPException(status_code=404, detail=result["error"])
     
     return {"success": True, "rca_summary": result}
+
+
+@router.post("/incidents/{incident_id}/rca-full")
+async def run_full_rca_analysis(
+    incident_id: str,
+    auto_create_wo: bool = True,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Run comprehensive RCA analysis with impact estimation and optional work order creation.
+    This endpoint performs:
+    - Event story generation
+    - Root cause scoring
+    - Financial impact estimation
+    - Carbon impact estimation
+    - Recommended action generation
+    - Auto work order creation (if enabled and conditions are met)
+    """
+    if not has_capability(current_user, "run_rca"):
+        raise HTTPException(status_code=403, detail="Not authorized to run RCA")
+    
+    try:
+        if auto_create_wo:
+            result = run_rca_and_create_work_order(db, current_user.tenant_id, incident_id)
+        else:
+            engine = RCAImpactEngine(db, current_user.tenant_id)
+            result = engine.analyze_incident(incident_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return {
+            "success": True,
+            "incident_id": incident_id,
+            "event_story": result.get("event_story"),
+            "event_story_ar": result.get("event_story_ar"),
+            "root_cause_scores": result.get("root_cause_scores"),
+            "top_cause": result.get("top_cause"),
+            "recommended_actions": result.get("recommended_actions"),
+            "financial_impact": result.get("financial_impact"),
+            "carbon_impact": result.get("carbon_impact"),
+            "work_order_created": result.get("work_order_created", False),
+            "work_order": result.get("work_order"),
+            "analyzed_at": result.get("analyzed_at")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RCA analysis failed: {str(e)}")
 
 
 @router.get("/reports/{incident_id}")
