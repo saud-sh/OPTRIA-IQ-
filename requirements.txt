@@ -19,4 +19,5 @@ pulp
 pyjwt
 python-dotenv
 alembic
+email-validator
 
